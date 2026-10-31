@@ -47,7 +47,8 @@ def _register(force, blocks):
         force.addEnergyParameterDerivative(_lam(b))
 
 
-def build_system(spec):
+def build_system(spec, configure=None):
+    """configure(nb), if given, sets up the MSLDNonbondedForce (method, cutoff, NBFIX, ...)."""
     n = len(spec["positions"])
     atom_block = spec["atom_block"]
     block_site = spec["block_site"]
@@ -73,6 +74,8 @@ def build_system(spec):
         else:
             nb.addException(i, j, 0.0, 1.0, 0.0)
     assert set(pairs14) <= {(min(i, j), max(i, j)) for i, j in spec["excluded"]}
+    if configure is not None:
+        configure(nb)
     system.addForce(nb)
 
     # bonded terms grouped by lambda signature
