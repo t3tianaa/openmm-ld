@@ -1,0 +1,7 @@
+file(GLOB TEST_PROGS *.cpp)
+foreach(TEST_PROG ${TEST_PROGS})
+    get_filename_component(TEST_ROOT ${TEST_PROG} NAME_WE)
+    add_executable(${TEST_ROOT} ${TEST_PROG})
+    target_link_libraries(${TEST_ROOT} ${SHARED_MSLD_TARGET})
+    add_test(NAME ${TEST_ROOT} COMMAND ${TEST_ROOT})
+endforeach()
