@@ -11,10 +11,11 @@ Both sides get identical bonded terms (stock custom forces), no biases and no re
 difference is nonbonded. The engine's dU/dlambda for its NonbondedForce part is a finite
 difference (exact: that part is quadratic in lambda).
 
-Reaction field: the engine's within-block correction (lambda - lambda^2) KE q q g(r) uses
-g = erfc(alpha r)/r for CutoffPeriodic and g = 1/r for CutoffNonPeriodic, instead of the reaction
-field form 1/r + k_rf r^2 - c_rf. That is an engine bug. For those methods the test checks that
-plugin - engine equals exactly minus that error, summed over the within-block 1-5+ pairs.
+Reaction field: up to the msld-phase1-sync-2026-09-27 branch, the engine's within-block correction
+(lambda - lambda^2) KE q q g(r) used g = erfc(alpha r)/r for CutoffPeriodic and g = 1/r for
+CutoffNonPeriodic instead of the reaction-field form 1/r + k_rf r^2 - c_rf (fixed on the OpenMM-MSLD
+branch claude/fix-rf-within-block-correction). If the engine under test still has that bug, the
+reaction-field cases xfail, but only when the mismatch equals exactly that known error.
 
 Skipped unless MSLD_ENGINE_PATH points at an OpenMM-MSLD checkout (the directory with msld/).
 """
@@ -241,6 +242,11 @@ def toy():
     return _toy()
 
 
+def _close(e_p, d_p, e_e, d_e):
+    return (abs(e_p - e_e) <= REL_TOL * max(1.0, abs(e_e))
+            and float(np.max(np.abs(d_p[1:] - d_e[1:]))) <= REL_TOL * max(1.0, float(np.max(np.abs(d_e)))))
+
+
 @pytest.mark.parametrize("nbfix", [False, True], ids=["LB", "NBFIX"])
 @pytest.mark.parametrize("method", list(METHODS))
 def test_plugin_matches_engine(toy, method, nbfix):
@@ -249,27 +255,17 @@ def test_plugin_matches_engine(toy, method, nbfix):
     spec, lams = toy
     psys = plugin_system(spec, method, nbfix)
     esys, model = engine_system(spec, method, nbfix)
+    old_engine_bug = False
     for lam in lams:
         e_p, d_p = plugin_eval(psys, spec, lam)
         e_e, d_e = engine_eval(esys, model, spec, lam)
+        if _close(e_p, d_p, e_e, d_e):
+            continue
         if method in ("CutoffNonPeriodic", "CutoffPeriodic"):
             err_e, err_d = engine_rf_error(spec, method, lam)
-            e_e -= err_e
-            d_e = d_e - err_d
-        scale = max(1.0, abs(e_e))
-        assert abs(e_p - e_e) <= REL_TOL * scale, (method, lam, e_p, e_e)
-        dscale = max(1.0, float(np.max(np.abs(d_e))))
-        assert float(np.max(np.abs(d_p[1:] - d_e[1:]))) <= REL_TOL * dscale, (method, lam, d_p, d_e)
-
-
-@pytest.mark.parametrize("method", ["CutoffNonPeriodic", "CutoffPeriodic"])
-def test_engine_rf_bug_is_real(toy, method):
-    """Without the correction above, plugin and engine disagree for reaction field."""
-    spec, lams = toy
-    lam = lams[0]
-    e_p, _ = plugin_eval(plugin_system(spec, method, False), spec, lam)
-    esys, model = engine_system(spec, method, False)
-    e_e, _ = engine_eval(esys, model, spec, lam)
-    err_e, _ = engine_rf_error(spec, method, lam)
-    assert abs(err_e) > 1e-3
-    assert abs((e_p - e_e) + err_e) <= REL_TOL * max(1.0, abs(e_e))
+            if _close(e_p, d_p, e_e - err_e, d_e - err_d):
+                old_engine_bug = True
+                continue
+        pytest.fail(f"{method}: plugin {e_p} {d_p} vs engine {e_e} {d_e} at lambda {lam}")
+    if old_engine_bug:
+        pytest.xfail("engine has the known within-block reaction-field bug; the plugin matches the corrected energy")
