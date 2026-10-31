@@ -64,3 +64,8 @@ install(FILES ${API_INTERNAL_HEADERS} DESTINATION include/internal)
 enable_testing()
 add_subdirectory(platforms/reference)
 add_subdirectory(serialization/tests)
+
+option(MSLD_BUILD_PYTHON_WRAPPERS "Build the SWIG Python wrapper (module msldplugin)" ON)
+if(MSLD_BUILD_PYTHON_WRAPPERS)
+    add_subdirectory(python)
+endif()
