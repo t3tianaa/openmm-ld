@@ -48,5 +48,5 @@ These show that the port is faithful, not that the energy is right. See ROADMAP.
 
 `examples/run_mdm2.py`, CPU platform, 26,305 atoms: minimization capped at 200 iterations (452 s), 2 ALF iterations of
 100 steps (82 s), 1,000 production steps (0.40 s/step), metrics and DCD written. The script asserts OpenMM-MSLD was not
-imported. This shows that the pieces work together; it's far too short for any science. Writing the prepared input
-(`tools/export_prepared_from_msld.py`) still uses OpenMM-MSLD's prep until stage P2.
+imported. This shows that the pieces work together; it's far too short for any science. The prepared input comes from
+`examples/prepare_mdm2.py` ([prep.md](prep.md)).

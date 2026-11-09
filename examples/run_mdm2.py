@@ -1,4 +1,4 @@
-"""An MDM2 MSLD run from a prepared system, using only openmm_ld: scale, minimize, ALF, production.
+"""An MDM2 MSLD run from a prepared system (prepare_mdm2.py), using only openmm_ld: scale, minimize, ALF, production.
 
 Usage: python run_mdm2.py PREPARED_DIR OUTDIR [ALF_ITERS] [STEPS_PER_ITER] [PRODUCTION_STEPS]
 Env: THREADS (default 4), MIN_ITERS (default 200). Needs msldplugin and its kernels, on the CPU platform.

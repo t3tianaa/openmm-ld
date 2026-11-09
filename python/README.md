@@ -32,3 +32,6 @@ comparison with `LambdaDynamics` needs `MSLD_ENGINE_PATH`. `tests/measure_theta_
 
 `tests/test_python_layer.py` checks the `openmm_ld` Python layer against the NumPy oracle and, with `MSLD_ENGINE_PATH`,
 against OpenMM-MSLD. `tests/compare_mdm2_layer.py` does the same comparison on MDM2.
+
+`tests/prep/` holds the prep tests. `tests/test_prep_matches_msld.py` and `tests/compare_prep.py` compare `openmm_ld.prep`
+with OpenMM-MSLD's prep.
