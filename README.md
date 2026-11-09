@@ -1,5 +1,5 @@
 # openmm-ld
-OpenMM pugin for lambda dynamics and multisite lambda dynamics
+OpenMM pugin for lambda dynamics and multisite lambda dynamics. See [ROADMAP.md](ROADMAP.md) for the plan.
 
 ## Building (Reference/CPU platform)
 
