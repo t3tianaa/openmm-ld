@@ -5,6 +5,7 @@
  *   - a 4-atom system against a hand calculation                             *
  *   - lambda = 1 against OpenMM::NonbondedForce (NoCutoff, RF, PME)          *
  *   - finite-difference checks of forces and dU/dlambda for every method     *
+ *   - neighbour-list path against the brute-force pair loop                  *
  * -------------------------------------------------------------------------- */
 
 #include "MSLDNonbondedForce.h"
@@ -19,6 +20,7 @@
 #include "openmm/reference/SimTKOpenMMRealType.h"
 #include "sfmt/SFMT.h"
 #include <cmath>
+#include <cstdlib>
 #include <iostream>
 #include <map>
 #include <string>
@@ -396,6 +398,62 @@ void testUpdateParameters() {
     ASSERT_EQUAL_TOL(getEnergy(fresh), e2, 1e-10);
 }
 
+/**
+ * The neighbour-list path against the O(N^2) pair loop: 512 atoms on a jittered grid, some wrapped
+ * outside the box, in a rectangular or triclinic periodic box or without periodicity.
+ */
+void testNeighborListMatchesBruteForce(MSLDNonbondedForce::NonbondedMethod method, bool triclinic) {
+    const int perSide = 8, numParticles = perSide*perSide*perSide;
+    const double spacing = 0.4, box = perSide*spacing;
+    const Vec3 a(box, 0, 0), b(triclinic ? 0.8 : 0.0, box, 0), c(triclinic ? 0.8 : 0.0, triclinic ? 0.8 : 0.0, box);
+    OpenMM_SFMT::SFMT sfmt;
+    init_gen_rand(1, sfmt);
+    System system;
+    system.setDefaultPeriodicBoxVectors(a, b, c);
+    MSLDNonbondedForce* force = new MSLDNonbondedForce();
+    force->addBlock(1);
+    force->addBlock(1);
+    force->addBlock(2);
+    force->setNonbondedMethod(method);
+    force->setCutoffDistance(1.0);
+    force->setUseSwitchingFunction(true);
+    force->setSwitchingDistance(0.85);
+    force->setEwaldErrorTolerance(5e-4);
+    vector<Vec3> positions;
+    for (int i = 0; i < numParticles; i++) {
+        system.addParticle(1.0);
+        int block = (i%8 == 0 ? 1 + (i/8)%3 : 0);
+        force->addParticle(0.8*(genrand_real2(sfmt)-0.5), 0.25+0.1*genrand_real2(sfmt), 0.2+0.5*genrand_real2(sfmt), block);
+        Vec3 x = a*((i%perSide+0.25*genrand_real2(sfmt))/perSide)
+               + b*(((i/perSide)%perSide+0.25*genrand_real2(sfmt))/perSide)
+               + c*((i/(perSide*perSide)+0.25*genrand_real2(sfmt))/perSide);
+        if (i%5 == 0 && method != MSLDNonbondedForce::CutoffNonPeriodic)
+            x += a*(i%2 == 0 ? 1.0 : -1.0) + c;
+        positions.push_back(x);
+    }
+    for (int i = 0; i+1 < numParticles; i += 16)
+        force->addException(i, i+1, (i%32 == 0 ? 0.0 : 0.03), 0.3, (i%32 == 0 ? 0.0 : 0.2));
+    system.addForce(force);
+
+    State states[2];
+    for (int k = 0; k < 2; k++) {
+        if (k == 1)
+            setenv("MSLD_REFERENCE_BRUTE_FORCE_PAIRS", "1", 1);
+        VerletIntegrator integrator(0.001);
+        Context context(system, integrator, Platform::getPlatformByName(platformName));
+        unsetenv("MSLD_REFERENCE_BRUTE_FORCE_PAIRS");
+        context.setPositions(positions);
+        setLambdas(context, 0.35, 0.65, 0.8);
+        states[k] = context.getState(State::Energy | State::Forces | State::ParameterDerivatives);
+    }
+    ASSERT_EQUAL_TOL(states[1].getPotentialEnergy(), states[0].getPotentialEnergy(), 1e-12);
+    for (int i = 0; i < numParticles; i++)
+        ASSERT_EQUAL_VEC(states[1].getForces()[i], states[0].getForces()[i], 1e-12);
+    map<string, double> d0 = states[0].getEnergyParameterDerivatives(), d1 = states[1].getEnergyParameterDerivatives();
+    for (int b = 1; b <= 3; b++)
+        ASSERT_EQUAL_TOL(d1[MSLDNonbondedForce::getLambdaName(b)], d0[MSLDNonbondedForce::getLambdaName(b)], 1e-12);
+}
+
 void runAll() {
     testHandCalculation();
     testIllegalException();
@@ -412,6 +470,11 @@ void runAll() {
     testFiniteDifferences(MSLDNonbondedForce::CutoffPeriodic, true, true);
     testFiniteDifferences(MSLDNonbondedForce::PME, false, false);
     testFiniteDifferences(MSLDNonbondedForce::PME, true, true);
+    testNeighborListMatchesBruteForce(MSLDNonbondedForce::CutoffNonPeriodic, false);
+    testNeighborListMatchesBruteForce(MSLDNonbondedForce::CutoffPeriodic, false);
+    testNeighborListMatchesBruteForce(MSLDNonbondedForce::CutoffPeriodic, true);
+    testNeighborListMatchesBruteForce(MSLDNonbondedForce::PME, false);
+    testNeighborListMatchesBruteForce(MSLDNonbondedForce::PME, true);
 }
 
 int main() {

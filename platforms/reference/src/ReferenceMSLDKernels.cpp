@@ -7,11 +7,13 @@
 #include "openmm/OpenMMException.h"
 #include "openmm/internal/ContextImpl.h"
 #include "openmm/internal/NonbondedForceImpl.h"
+#include "openmm/reference/ReferenceNeighborList.h"
 #include "openmm/reference/ReferencePME.h"
 #include "openmm/reference/ReferencePlatform.h"
 #include "openmm/reference/SimTKOpenMMRealType.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 using namespace MSLDPlugin;
 using namespace OpenMM;
@@ -93,6 +95,12 @@ void ReferenceCalcMSLDNonbondedForceKernel::initialize(const System& system, con
             if (block[i] != block[j] && blockSite[block[i]] == blockSite[block[j]] && exclusions.find(make_pair(i, j)) == exclusions.end())
                 pmeExclusions.push_back(make_pair(i, j));
         }
+    directExclusions.assign(numParticles, set<int>());
+    for (int k = 0; k < (int) pmeExclusions.size(); k++) {
+        directExclusions[pmeExclusions[k].first].insert(pmeExclusions[k].second);
+        directExclusions[pmeExclusions[k].second].insert(pmeExclusions[k].first);
+    }
+    bruteForcePairs = (getenv("MSLD_REFERENCE_BRUTE_FORCE_PAIRS") != NULL);
 
     method = force.getNonbondedMethod();
     periodic = (method == MSLDNonbondedForce::CutoffPeriodic || method == MSLDNonbondedForce::PME);
@@ -185,89 +193,94 @@ double ReferenceCalcMSLDNonbondedForceKernel::execute(ContextImpl& context, bool
     double cutoff2 = cutoffDistance*cutoffDistance;
 
     // ---- direct-space pairs ----
-    for (int i = 0; i < numParticles; i++) {
-        int bi = block[i];
-        for (int j = i+1; j < numParticles; j++) {
-            int bj = block[j];
-            if (bi != 0 && bj != 0 && bi != bj && blockSite[bi] == blockSite[bj])
-                continue;                                   // different blocks of one site
-            if (exclusions.find(make_pair(i, j)) != exclusions.end())
-                continue;
-            Vec3 d = delta(pos[i], pos[j], box, periodic);
-            double r2 = d.dot(d);
-            if (cutoff && r2 >= cutoff2)
-                continue;
-            double r = sqrt(r2);
+    auto processPair = [&](int i, int j) {
+        int bi = block[i], bj = block[j];
+        Vec3 d = delta(pos[i], pos[j], box, periodic);
+        double r2 = d.dot(d);
+        if (cutoff && r2 >= cutoff2)
+            return;
+        double r = sqrt(r2);
 
-            // pair coupling L and dL/dlambda
-            double L = 1.0, dL1 = 0.0, dL2 = 0.0;
-            int b1 = 0, b2 = 0;
-            if (bi == 0 && bj == 0) {
-            }
-            else if (bi == bj || bi == 0 || bj == 0) {
-                b1 = (bi != 0 ? bi : bj);
-                L = lam[b1];
-                dL1 = 1.0;
-            }
-            else {
-                b1 = bi;
-                b2 = bj;
-                L = lam[bi]*lam[bj];
-                dL1 = lam[bj];
-                dL2 = lam[bi];
-            }
-            bool alchemical = (b1 != 0);
-            double shift = (alchemical ? softAlpha*(1.0-L) : 0.0);
-            double r6 = r2*r2*r2;
-            double U = 0.0, dUdr = 0.0, dUdL = 0.0;
-
-            // Lennard-Jones (Beutler soft-core)
-            double sig, eps;
-            pairSigmaEpsilon(i, j, sig, eps);
-            if (eps != 0.0 && sig != 0.0) {
-                double sw = 1.0, dsw = 0.0;
-                if (useSwitch && r > switchingDistance) {
-                    double width = cutoffDistance-switchingDistance;
-                    double t = (r-switchingDistance)/width;
-                    sw = 1.0+t*t*t*(-10.0+t*(15.0-t*6.0));
-                    dsw = t*t*(-30.0+t*(60.0-t*30.0))/width;
-                }
-                double sig2 = sig*sig;
-                double sig6 = sig2*sig2*sig2;
-                double s = r6/sig6 + shift;
-                double inv = 1.0/s;
-                double f = inv*inv - inv;
-                double fp = -2.0*inv*inv*inv + inv*inv;
-                double ulj = L*4.0*eps*f;
-                double duljdr = L*4.0*eps*fp*6.0*r6/(r*sig6);
-                U += ulj*sw;
-                dUdr += duljdr*sw + ulj*dsw;
-                dUdL += 4.0*eps*(f - softAlpha*L*fp)*sw;
-            }
-
-            // Coulomb (soft-core on the distance)
-            double qq = KE*charge[i]*charge[j];
-            if (qq != 0.0) {
-                double rsc = (shift > 0.0 ? pow(r6 + shift*sigmaQ6, 1.0/6.0) : r);
-                double g, dg;
-                coulombKernel(rsc, g, dg);
-                double rsc5 = rsc*rsc*rsc*rsc*rsc;
-                U += L*qq*g;
-                dUdr += L*qq*dg*(r6/r)/rsc5;
-                dUdL += qq*(g - L*dg*softAlpha*sigmaQ6/(6.0*rsc5));
-            }
-
-            energy += U;
-            if (includeForces) {
-                Vec3 f = d*(dUdr/r);
-                force[i] += f;
-                force[j] -= f;
-            }
-            if (b1 != 0)
-                dEdLam[b1] += dUdL*dL1;
-            if (b2 != 0)
-                dEdLam[b2] += dUdL*dL2;
+        // pair coupling L and dL/dlambda
+        double L = 1.0, dL1 = 0.0, dL2 = 0.0;
+        int b1 = 0, b2 = 0;
+        if (bi == 0 && bj == 0) {
         }
+        else if (bi == bj || bi == 0 || bj == 0) {
+            b1 = (bi != 0 ? bi : bj);
+            L = lam[b1];
+            dL1 = 1.0;
+        }
+        else {
+            b1 = bi;
+            b2 = bj;
+            L = lam[bi]*lam[bj];
+            dL1 = lam[bj];
+            dL2 = lam[bi];
+        }
+        bool alchemical = (b1 != 0);
+        double shift = (alchemical ? softAlpha*(1.0-L) : 0.0);
+        double r6 = r2*r2*r2;
+        double U = 0.0, dUdr = 0.0, dUdL = 0.0;
+
+        // Lennard-Jones (Beutler soft-core)
+        double sig, eps;
+        pairSigmaEpsilon(i, j, sig, eps);
+        if (eps != 0.0 && sig != 0.0) {
+            double sw = 1.0, dsw = 0.0;
+            if (useSwitch && r > switchingDistance) {
+                double width = cutoffDistance-switchingDistance;
+                double t = (r-switchingDistance)/width;
+                sw = 1.0+t*t*t*(-10.0+t*(15.0-t*6.0));
+                dsw = t*t*(-30.0+t*(60.0-t*30.0))/width;
+            }
+            double sig2 = sig*sig;
+            double sig6 = sig2*sig2*sig2;
+            double s = r6/sig6 + shift;
+            double inv = 1.0/s;
+            double f = inv*inv - inv;
+            double fp = -2.0*inv*inv*inv + inv*inv;
+            double ulj = L*4.0*eps*f;
+            double duljdr = L*4.0*eps*fp*6.0*r6/(r*sig6);
+            U += ulj*sw;
+            dUdr += duljdr*sw + ulj*dsw;
+            dUdL += 4.0*eps*(f - softAlpha*L*fp)*sw;
+        }
+
+        // Coulomb (soft-core on the distance)
+        double qq = KE*charge[i]*charge[j];
+        if (qq != 0.0) {
+            double rsc = (shift > 0.0 ? pow(r6 + shift*sigmaQ6, 1.0/6.0) : r);
+            double g, dg;
+            coulombKernel(rsc, g, dg);
+            double rsc5 = rsc*rsc*rsc*rsc*rsc;
+            U += L*qq*g;
+            dUdr += L*qq*dg*(r6/r)/rsc5;
+            dUdL += qq*(g - L*dg*softAlpha*sigmaQ6/(6.0*rsc5));
+        }
+
+        energy += U;
+        if (includeForces) {
+            Vec3 f = d*(dUdr/r);
+            force[i] += f;
+            force[j] -= f;
+        }
+        if (b1 != 0)
+            dEdLam[b1] += dUdL*dL1;
+        if (b2 != 0)
+            dEdLam[b2] += dUdL*dL2;
+    };
+    if (cutoff && !bruteForcePairs) {
+        NeighborList neighbors;
+        computeNeighborListVoxelHash(neighbors, numParticles, pos, directExclusions, box, periodic, cutoffDistance);
+        for (int k = 0; k < (int) neighbors.size(); k++)
+            processPair(min(neighbors[k].first, neighbors[k].second), max(neighbors[k].first, neighbors[k].second));
+    }
+    else {
+        for (int i = 0; i < numParticles; i++)
+            for (int j = i+1; j < numParticles; j++)
+                if (directExclusions[i].find(j) == directExclusions[i].end())
+                    processPair(i, j);
     }
 
     // ---- 1-4 exceptions: L (KE qq/r + LJ), no soft-core, no cutoff ----

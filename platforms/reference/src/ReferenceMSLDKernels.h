@@ -23,9 +23,12 @@ namespace MSLDPlugin {
 /**
  * Reference implementation of MSLDNonbondedForce (also registered for the CPU platform).
  *
- * Direct space is a plain O(N^2) pair loop. With PME the reciprocal part is OpenMM's own
- * ReferencePME on the charges lambda_b(i) q_i, with the self term and the excluded-pair erf terms
- * subtracted, so at lambda = 1 it matches OpenMM::NonbondedForce exactly.
+ * Direct space uses OpenMM's voxel-hash neighbour list with the cutoff methods and an O(N^2) pair
+ * loop with NoCutoff. Setting the environment variable MSLD_REFERENCE_BRUTE_FORCE_PAIRS before a
+ * Context is created forces the O(N^2) loop for every method (tests only; same pair logic). With
+ * PME the reciprocal part is OpenMM's own ReferencePME on the charges lambda_b(i) q_i, with the self
+ * term and the excluded-pair erf terms subtracted, so at lambda = 1 it matches
+ * OpenMM::NonbondedForce exactly.
  */
 class ReferenceCalcMSLDNonbondedForceKernel : public CalcMSLDNonbondedForceKernel {
 public:
@@ -57,6 +60,8 @@ private:
     std::map<std::pair<int, int>, std::pair<double, double> > nbfix;
     std::set<std::pair<int, int> > exclusions;            // all exception pairs (i < j)
     std::vector<std::pair<int, int> > pmeExclusions;      // exceptions + same-site cross-block pairs
+    std::vector<std::set<int> > directExclusions;         // pmeExclusions, per particle both ways
+    bool bruteForcePairs;
     std::vector<Exception14> exceptions14;
     OpenMM::ReferencePME* pme;
 };
