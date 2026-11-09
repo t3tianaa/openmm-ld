@@ -224,8 +224,12 @@ def test_fixed_block_keeps_its_theta():
 def test_temperature_interface():
     integrator = MSLDIntegrator(300.0, 1.0, 0.001, toy_blocks(1.0))
     assert integrator.getTemperature().value_in_unit(unit.kelvin) == pytest.approx(300.0)
+    integrator.setThetaVelocities([1.0] * 5)
     integrator.setTemperature(310.0 * unit.kelvin)
     assert integrator.getTemperature().value_in_unit(unit.kelvin) == pytest.approx(310.0)
+    assert integrator.getThetaVelocities()[0] == pytest.approx(np.sqrt(310.0 / 300.0))
+    integrator.setTemperature(300.0, rescale_theta_velocities=False)
+    assert integrator.getThetaVelocities()[0] == pytest.approx(np.sqrt(310.0 / 300.0))
 
 
 def test_nvt_temperatures():
@@ -288,3 +292,14 @@ def test_runs_under_replica_exchange():
     sampler.simulate(5)
     assert sampler.currentIteration == 5
     assert len(sampler.replicaConformation) == 2
+
+    # a temperature swap rescales vtheta with the atom velocities
+    sampler.simulateReplica(0, steps=0)
+    before = integrator.getThetaVelocities()
+    t_before = integrator.getTemperature()
+    sampler.replicaStateIndex[0] = 1 - sampler.replicaStateIndex[0]
+    sampler.simulateReplica(0, steps=0)
+    t_after = integrator.getTemperature()
+    assert t_after != t_before
+    scale = np.sqrt(t_after / t_before)
+    assert integrator.getThetaVelocities() == pytest.approx([scale * v for v in before], rel=1e-12)

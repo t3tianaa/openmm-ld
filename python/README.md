@@ -29,3 +29,6 @@ convergence of its k-space sum.
 `tests/test_msld_integrator.py` covers `openmm_ld.MSLDIntegrator` (see `docs/msld_integrator.md`). Its step-by-step
 comparison with `LambdaDynamics` needs `MSLD_ENGINE_PATH`. `tests/measure_theta_temperature.py` and
 `tests/compare_mdm2_integrator.py` are the longer measurements behind that note.
+
+`tests/test_python_layer.py` checks the `openmm_ld` Python layer against the NumPy oracle and, with `MSLD_ENGINE_PATH`,
+against OpenMM-MSLD. `tests/compare_mdm2_layer.py` does the same comparison on MDM2.

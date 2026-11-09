@@ -15,10 +15,13 @@ openmm-ld/
   python/               SWIG module msldplugin (exists)
   openmm_ld/            Python layer (P1-P3)
     integrator.py       MSLDIntegrator: atoms + theta, a CustomIntegrator (exists)
-    model.py            blocks, sites, theta -> lambda
-    forces.py           lambda-scaled bonded terms, ALF biases, restraints (stock OpenMM custom forces)
-    alf.py              adaptive landscape flattening
-    io.py               metrics, trajectories, populations
+    model.py            blocks, sites, theta -> lambda (exists)
+    forces.py           lambda-scaled bonded terms, ALF biases, restraints, the nonbonded force (exists)
+    builder.py          scale_msld_system (exists)
+    dynamics.py         LambdaDynamics: the run driver (exists)
+    alf.py              adaptive landscape flattening (exists)
+    io.py               metrics, trajectories, populations (exists)
+    prepared.py         load a prepared system from disk (exists)
     prep/               ingest, hybrid building, solvation, clash handling
     cli.py              command line: PDB to running system
 ```
@@ -29,7 +32,7 @@ openmm-ld/
 |---|---|---|---|
 | S0, S1 | Nonbonded force, Reference and CPU | Hand calculation, NumPy oracle, `NonbondedForce` at lambda = 1, engine, Ewald sum; BLaDE single points still to do | Done except BLaDE |
 | S3 | `MSLDIntegrator` as a `CustomIntegrator` in `openmm_ld/integrator.py` ([design and results](docs/msld_integrator.md)) | T_theta = 300 K, barostat fires, energy conserved at zero friction, state survives `setState`; matches `LambdaDynamics` | Done on the toy; pressure and exchange statistics not checked |
-| P1 | `model`, `forces`, `alf`, `io` | Same forces and same ALF updates as OpenMM-MSLD on the same inputs | Not started |
+| P1 | `model`, `builder`, `forces`, `dynamics`, `alf`, `io`, `prepared` ([notes](docs/python_layer.md)) | Same forces and same ALF updates as OpenMM-MSLD on the same inputs; MDM2 runs end to end from a prepared system | Done; ALF and production only run briefly on MDM2 |
 | P2 | `prep` | Same hybrid System as OpenMM-MSLD from the same inputs | Not started |
 | P3 | `cli` | MDM2 runs from one command with OpenMM-MSLD uninstalled | Not started |
 | S2 | GPU kernels | Equal to Reference within single-precision tolerance | Not started; can run alongside P1-P3 |

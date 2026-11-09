@@ -140,8 +140,17 @@ class MSLDIntegrator(mm.CustomIntegrator):
     def getTemperature(self):
         return self.getGlobalVariableByName("kT") / MOLAR_GAS_CONSTANT * unit.kelvin
 
-    def setTemperature(self, temperature):
-        self.setGlobalVariableByName("kT", MOLAR_GAS_CONSTANT * _value(temperature, unit.kelvin))
+    def setTemperature(self, temperature, rescale_theta_velocities=True):
+        """Set the temperature, rescaling vtheta to it. OpenMM's replica-exchange sampler rescales the atom
+        velocities on a temperature swap, restores this integrator's state first and then calls this method,
+        so kT still holds the replica's old temperature here and theta gets the same scaling."""
+        kT = MOLAR_GAS_CONSTANT * _value(temperature, unit.kelvin)
+        if rescale_theta_velocities:
+            scale = math.sqrt(kT / self.getGlobalVariableByName("kT"))
+            for b, _ in self._numbered():
+                name = f"vtheta{b}"
+                self.setGlobalVariableByName(name, scale * self.getGlobalVariableByName(name))
+        self.setGlobalVariableByName("kT", kT)
 
     # ---- theta state ----------------------------------------------------------------------------------
     def getTheta(self):
