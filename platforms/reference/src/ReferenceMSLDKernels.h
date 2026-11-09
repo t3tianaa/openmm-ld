@@ -32,8 +32,8 @@ namespace MSLDPlugin {
  *
  * The direct-space pairs run on the platform's thread pool (the Threads property on the CPU platform), split
  * in a fixed way, each thread with its own accumulator. The neighbour list is built with some padding beyond the
- * cutoff and reused until an atom has moved half the padding or the box has changed. MSLD_KERNEL_TIMING makes it
- * print how long each part took.
+ * cutoff and reused until an atom has moved half the padding or the box has changed; MSLD_NEIGHBOR_PADDING overrides
+ * the padding, and 0 rebuilds at every evaluation. MSLD_KERNEL_TIMING makes it print how long each part took.
  */
 class ReferenceCalcMSLDNonbondedForceKernel : public CalcMSLDNonbondedForceKernel {
 public:
@@ -79,6 +79,7 @@ private:
     OpenMM::Vec3 neighborBox[3];
     bool neighborsValid;
     int neighborBuilds;
+    double neighborPadding;
     std::vector<ThreadAccumulator> accumulators;
     std::vector<double> sectionTimes;
     int evaluations, lastNumThreads;

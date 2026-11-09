@@ -136,6 +136,7 @@ void ReferenceCalcMSLDNonbondedForceKernel::initialize(const System& system, con
     lastNumThreads = 0;
     neighborsValid = false;
     neighborBuilds = 0;
+    neighborPadding = (getenv("MSLD_NEIGHBOR_PADDING") != NULL ? atof(getenv("MSLD_NEIGHBOR_PADDING")) : NEIGHBOR_PADDING);
 
     method = force.getNonbondedMethod();
     periodic = (method == MSLDNonbondedForce::CutoffPeriodic || method == MSLDNonbondedForce::PME);
@@ -212,7 +213,7 @@ void ReferenceCalcMSLDNonbondedForceKernel::coulombKernel(double x, double& g, d
 
 void ReferenceCalcMSLDNonbondedForceKernel::updateNeighborList(const vector<Vec3>& pos, const Vec3* box) {
     // the padding can't take the list past half the box
-    double padding = NEIGHBOR_PADDING;
+    double padding = neighborPadding;
     if (periodic)
         padding = min(padding, 0.5*min(box[0][0], min(box[1][1], box[2][2])) - cutoffDistance);
     bool valid = neighborsValid && padding > 0.0;
