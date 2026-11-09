@@ -76,6 +76,14 @@ not at 0.5 fs, which looks like the usual timestep effect.
 same as the old integrator's: 22.4 kJ/mol/ps after 0.1 ps. Time per step: 0.396 s against 0.429 s. Almost all of that is the
 force evaluation (about 0.39 s), so the integrator's own cost is now small but the force still runs on one thread.
 
+## Seeds and energy reads
+
+Asking the Context for the energy advances the integrator's random stream, in this CustomIntegrator on the Reference and
+CPU platforms. (Measured: one read before a run changes the noisy trajectory, and at zero friction it changes nothing.
+Probably the kinetic-energy evaluation drawing unused random numbers; not confirmed in OpenMM's source.) So it doesn't
+affect the physics, but one seed gives one trajectory only if the energy is read at the same points. A reporter that reads the
+energy more often gives a different, equally valid, trajectory.
+
 ## What it doesn't do yet
 
 - A `setState` from a temperature swap rescales the atom velocities in the sampler, but not vθ.
