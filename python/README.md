@@ -20,3 +20,8 @@ and CHARMM NBFIX tables, on the oracle toy in a periodic box. It needs an OpenMM
 `cmake -DMSLD_ENGINE_PATH=/path/to/OpenMM-MSLD build` (skipped otherwise). The engine's within-block
 reaction-field correction uses the wrong screening function (erfc for CutoffPeriodic, bare 1/r for
 CutoffNonPeriodic), so for those methods the test removes that known engine error before comparing.
+
+`tests/test_ewald_reference.py` compares the plugin's PME at partial lambda with a plain Ewald sum written
+from the energy spec (`tests/ewald_reference.py`), which shares no code with OpenMM. The reference is tested
+on its own first: the NaCl Madelung constant, independence of alpha where theory requires it, and
+convergence of its k-space sum.
