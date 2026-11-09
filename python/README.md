@@ -25,3 +25,7 @@ CutoffNonPeriodic), so for those methods the test removes that known engine erro
 from the energy spec (`tests/ewald_reference.py`), which shares no code with OpenMM. The reference is tested
 on its own first: the NaCl Madelung constant, independence of alpha where theory requires it, and
 convergence of its k-space sum.
+
+`tests/test_msld_integrator.py` covers `openmm_ld.MSLDIntegrator` (see `docs/msld_integrator.md`). Its step-by-step
+comparison with `LambdaDynamics` needs `MSLD_ENGINE_PATH`. `tests/measure_theta_temperature.py` and
+`tests/compare_mdm2_integrator.py` are the longer measurements behind that note.

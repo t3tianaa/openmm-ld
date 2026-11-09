@@ -8,12 +8,13 @@ port and then retires (ADR-0046 in its vault).
 
 ```
 openmm-ld/
-  openmmapi/            C++ API: MSLDNonbondedForce (exists), MSLDIntegrator (S3)
+  openmmapi/            C++ API: MSLDNonbondedForce (exists)
   platforms/reference/  double-precision kernels, also serving the CPU platform (exists)
   platforms/common/     GPU kernels: OpenCL, CUDA, HIP (S2)
   serialization/        XML proxies (exists)
   python/               SWIG module msldplugin (exists)
   openmm_ld/            Python layer (P1-P3)
+    integrator.py       MSLDIntegrator: atoms + theta, a CustomIntegrator (exists)
     model.py            blocks, sites, theta -> lambda
     forces.py           lambda-scaled bonded terms, ALF biases, restraints (stock OpenMM custom forces)
     alf.py              adaptive landscape flattening
@@ -27,7 +28,7 @@ openmm-ld/
 | Stage | What | Done when | State |
 |---|---|---|---|
 | S0, S1 | Nonbonded force, Reference and CPU | Hand calculation, NumPy oracle, `NonbondedForce` at lambda = 1, engine, Ewald sum; BLaDE single points still to do | Done except BLaDE |
-| S3 | `MSLDIntegrator` in C++ | T_theta = 300 K, barostat fires, energy conserved at zero friction, state survives `setState`; matches `LambdaDynamics` | Next |
+| S3 | `MSLDIntegrator` as a `CustomIntegrator` in `openmm_ld/integrator.py` ([design and results](docs/msld_integrator.md)) | T_theta = 300 K, barostat fires, energy conserved at zero friction, state survives `setState`; matches `LambdaDynamics` | Done on the toy; pressure and exchange statistics not checked |
 | P1 | `model`, `forces`, `alf`, `io` | Same forces and same ALF updates as OpenMM-MSLD on the same inputs | Not started |
 | P2 | `prep` | Same hybrid System as OpenMM-MSLD from the same inputs | Not started |
 | P3 | `cli` | MDM2 runs from one command with OpenMM-MSLD uninstalled | Not started |
