@@ -7,12 +7,15 @@
 #include "openmm/OpenMMException.h"
 #include "openmm/internal/ContextImpl.h"
 #include "openmm/internal/NonbondedForceImpl.h"
+#include "openmm/internal/ThreadPool.h"
 #include "openmm/reference/ReferenceNeighborList.h"
 #include "openmm/reference/ReferencePME.h"
 #include "openmm/reference/ReferencePlatform.h"
 #include "openmm/reference/SimTKOpenMMRealType.h"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 
 using namespace MSLDPlugin;
@@ -21,14 +24,40 @@ using namespace std;
 
 static const double KE = ONE_4PI_EPS0;
 static const double TWO_OVER_SQRT_PI = 1.1283791670955126;
+static const double NEIGHBOR_PADDING = 0.1;     // nm
 
 static ReferencePlatform::PlatformData* getPlatformData(ContextImpl& context) {
     return reinterpret_cast<ReferencePlatform::PlatformData*>(context.getPlatformData());
 }
 
+// Adds the time since the last call to a slot, when timing is on.
+class ReferenceCalcMSLDNonbondedForceKernel::SectionTimer {
+public:
+    SectionTimer(vector<double>* slots) : slots(slots), last(chrono::steady_clock::now()) {
+    }
+    void lap(int slot) {
+        if (slots != NULL) {
+            auto now = chrono::steady_clock::now();
+            (*slots)[slot] += chrono::duration<double>(now-last).count();
+            last = now;
+        }
+    }
+private:
+    vector<double>* slots;
+    chrono::steady_clock::time_point last;
+};
+
 ReferenceCalcMSLDNonbondedForceKernel::~ReferenceCalcMSLDNonbondedForceKernel() {
     if (pme != NULL)
         delete pme;
+    if (timing && evaluations > 0) {
+        static const char* names[] = {"neighbour list", "direct pairs", "1-4 exceptions", "PME reciprocal", "PME charge derivatives", "PME corrections", "reduce"};
+        fprintf(stderr, "MSLD kernel timing, %d evaluations, %d neighbour list builds, %d threads, s per evaluation:",
+                evaluations, neighborBuilds, lastNumThreads);
+        for (int k = 0; k < (int) sectionTimes.size(); k++)
+            fprintf(stderr, " %s %.5f;", names[k], sectionTimes[k]/evaluations);
+        fprintf(stderr, "\n");
+    }
 }
 
 void ReferenceCalcMSLDNonbondedForceKernel::readParameters(const MSLDNonbondedForce& force) {
@@ -101,6 +130,12 @@ void ReferenceCalcMSLDNonbondedForceKernel::initialize(const System& system, con
         directExclusions[pmeExclusions[k].second].insert(pmeExclusions[k].first);
     }
     bruteForcePairs = (getenv("MSLD_REFERENCE_BRUTE_FORCE_PAIRS") != NULL);
+    timing = (getenv("MSLD_KERNEL_TIMING") != NULL);
+    sectionTimes.assign(7, 0.0);
+    evaluations = 0;
+    lastNumThreads = 0;
+    neighborsValid = false;
+    neighborBuilds = 0;
 
     method = force.getNonbondedMethod();
     periodic = (method == MSLDNonbondedForce::CutoffPeriodic || method == MSLDNonbondedForce::PME);
@@ -175,6 +210,32 @@ void ReferenceCalcMSLDNonbondedForceKernel::coulombKernel(double x, double& g, d
     }
 }
 
+void ReferenceCalcMSLDNonbondedForceKernel::updateNeighborList(const vector<Vec3>& pos, const Vec3* box) {
+    // the padding can't take the list past half the box
+    double padding = NEIGHBOR_PADDING;
+    if (periodic)
+        padding = min(padding, 0.5*min(box[0][0], min(box[1][1], box[2][2])) - cutoffDistance);
+    bool valid = neighborsValid && padding > 0.0;
+    if (valid && periodic)
+        valid = (box[0] == neighborBox[0] && box[1] == neighborBox[1] && box[2] == neighborBox[2]);
+    if (valid) {
+        double limit = 0.25*padding*padding;     // half the padding, squared
+        for (int i = 0; i < numParticles && valid; i++) {
+            Vec3 d = delta(neighborPositions[i], pos[i], box, periodic);
+            valid = (d.dot(d) <= limit);
+        }
+    }
+    if (valid)
+        return;
+    computeNeighborListVoxelHash(neighbors, numParticles, pos, directExclusions, box, periodic, cutoffDistance+max(padding, 0.0));
+    neighborPositions = pos;
+    if (periodic)
+        for (int k = 0; k < 3; k++)
+            neighborBox[k] = box[k];
+    neighborsValid = true;
+    neighborBuilds++;
+}
+
 double ReferenceCalcMSLDNonbondedForceKernel::execute(ContextImpl& context, bool includeForces, bool includeEnergy) {
     ReferencePlatform::PlatformData* data = getPlatformData(context);
     const vector<Vec3>& pos = *data->positions;
@@ -191,9 +252,21 @@ double ReferenceCalcMSLDNonbondedForceKernel::execute(ContextImpl& context, bool
     vector<double> dEdLam(numBlocks, 0.0);
     double energy = 0.0;
     double cutoff2 = cutoffDistance*cutoffDistance;
+    SectionTimer timer(timing ? &sectionTimes : NULL);
+    ThreadPool& threads = data->threads;
+    int numThreads = threads.getNumThreads();
+    lastNumThreads = numThreads;
+    evaluations++;
+    if ((int) accumulators.size() != numThreads) {
+        accumulators.resize(numThreads);
+        for (auto& acc : accumulators) {
+            acc.force.resize(numParticles);
+            acc.dEdLam.resize(numBlocks);
+        }
+    }
 
-    // ---- direct-space pairs ----
-    auto processPair = [&](int i, int j) {
+    // ---- direct-space pairs: each thread sums into its own accumulator; they are added up in thread order ----
+    auto processPair = [&](int i, int j, ThreadAccumulator& acc) {
         int bi = block[i], bj = block[j];
         Vec3 d = delta(pos[i], pos[j], box, periodic);
         double r2 = d.dot(d);
@@ -259,29 +332,52 @@ double ReferenceCalcMSLDNonbondedForceKernel::execute(ContextImpl& context, bool
             dUdL += qq*(g - L*dg*softAlpha*sigmaQ6/(6.0*rsc5));
         }
 
-        energy += U;
+        acc.energy += U;
         if (includeForces) {
             Vec3 f = d*(dUdr/r);
-            force[i] += f;
-            force[j] -= f;
+            acc.force[i] += f;
+            acc.force[j] -= f;
         }
         if (b1 != 0)
-            dEdLam[b1] += dUdL*dL1;
+            acc.dEdLam[b1] += dUdL*dL1;
         if (b2 != 0)
-            dEdLam[b2] += dUdL*dL2;
+            acc.dEdLam[b2] += dUdL*dL2;
     };
-    if (cutoff && !bruteForcePairs) {
-        NeighborList neighbors;
-        computeNeighborListVoxelHash(neighbors, numParticles, pos, directExclusions, box, periodic, cutoffDistance);
-        for (int k = 0; k < (int) neighbors.size(); k++)
-            processPair(min(neighbors[k].first, neighbors[k].second), max(neighbors[k].first, neighbors[k].second));
+    bool useNeighbors = (cutoff && !bruteForcePairs);
+    if (useNeighbors)
+        updateNeighborList(pos, box);
+    timer.lap(0);
+    // A fixed split of the work, so a fixed number of threads always gives the same result.
+    threads.execute([&](ThreadPool& pool, int threadIndex) {
+        ThreadAccumulator& acc = accumulators[threadIndex];
+        acc.energy = 0.0;
+        fill(acc.dEdLam.begin(), acc.dEdLam.end(), 0.0);
+        if (includeForces)
+            fill(acc.force.begin(), acc.force.end(), Vec3());
+        if (useNeighbors) {
+            long long size = neighbors.size();
+            int first = size*threadIndex/numThreads, last = size*(threadIndex+1)/numThreads;
+            for (int k = first; k < last; k++)
+                processPair(min(neighbors[k].first, neighbors[k].second), max(neighbors[k].first, neighbors[k].second), acc);
+        }
+        else {
+            for (int i = threadIndex; i < numParticles; i += numThreads)
+                for (int j = i+1; j < numParticles; j++)
+                    if (directExclusions[i].find(j) == directExclusions[i].end())
+                        processPair(i, j, acc);
+        }
+    });
+    threads.waitForThreads();
+    timer.lap(1);
+    for (auto& acc : accumulators) {
+        energy += acc.energy;
+        for (int b = 1; b < numBlocks; b++)
+            dEdLam[b] += acc.dEdLam[b];
+        if (includeForces)
+            for (int i = 0; i < numParticles; i++)
+                force[i] += acc.force[i];
     }
-    else {
-        for (int i = 0; i < numParticles; i++)
-            for (int j = i+1; j < numParticles; j++)
-                if (directExclusions[i].find(j) == directExclusions[i].end())
-                    processPair(i, j);
-    }
+    timer.lap(6);
 
     // ---- 1-4 exceptions: L (KE qq/r + LJ), no soft-core, no cutoff ----
     for (int k = 0; k < (int) exceptions14.size(); k++) {
@@ -309,6 +405,8 @@ double ReferenceCalcMSLDNonbondedForceKernel::execute(ContextImpl& context, bool
             dEdLam[b] += u;
     }
 
+    timer.lap(2);
+
     // ---- PME reciprocal space on charges lambda_b(i) q_i ----
     if (method == MSLDNonbondedForce::PME) {
         vector<double> Q(numParticles);
@@ -322,6 +420,7 @@ double ReferenceCalcMSLDNonbondedForceKernel::execute(ContextImpl& context, bool
         if (includeForces)
             for (int i = 0; i < numParticles; i++)
                 force[i] += recipForces[i];
+        timer.lap(3);
         vector<double> dEdQ(numParticles, 0.0);
         bool needDerivs = (numBlocks > 1);
         if (needDerivs) {
@@ -333,6 +432,7 @@ double ReferenceCalcMSLDNonbondedForceKernel::execute(ContextImpl& context, bool
             for (int i = 0; i < numParticles; i++)
                 dEdQ[i] += recipDerivs[i];
         }
+        timer.lap(4);
 
         // self energy
         double selfScale = KE*ewaldAlpha/sqrt(M_PI);
@@ -381,6 +481,7 @@ double ReferenceCalcMSLDNonbondedForceKernel::execute(ContextImpl& context, bool
         for (int i = 0; i < numParticles; i++)
             if (block[i] != 0)
                 dEdLam[block[i]] += charge[i]*dEdQ[i];
+        timer.lap(5);
     }
 
     map<string, double>& derivs = *data->energyParameterDerivatives;

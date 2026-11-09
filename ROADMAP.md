@@ -35,6 +35,7 @@ openmm-ld/
 | P1 | `model`, `builder`, `forces`, `dynamics`, `alf`, `io`, `prepared` ([notes](docs/python_layer.md)) | Same forces and same ALF updates as OpenMM-MSLD on the same inputs; MDM2 runs end to end from a prepared system | Done; ALF and production only run briefly on MDM2 |
 | P2 | `prep` ([notes](docs/prep.md)) | Same hybrid System as OpenMM-MSLD from the same inputs | Done: byte-identical on MDM2 |
 | P3 | `cli` | MDM2 runs from one command with OpenMM-MSLD uninstalled | Not started |
+| S1b | Threads on the CPU platform, reused neighbour list ([notes](docs/cpu_threading.md)) | Results independent of the thread count to round-off | Done: 0.40 to 0.11 s/step on MDM2 at 4 threads |
 | S2 | GPU kernels | Equal to Reference within single-precision tolerance | Not started; can run alongside P1-P3 |
 
 ## Rules
