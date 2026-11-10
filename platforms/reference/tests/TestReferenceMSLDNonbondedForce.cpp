@@ -454,6 +454,63 @@ void testNeighborListMatchesBruteForce(MSLDNonbondedForce::NonbondedMethod metho
         ASSERT_EQUAL_TOL(d1[MSLDNonbondedForce::getLambdaName(b)], d0[MSLDNonbondedForce::getLambdaName(b)], 1e-12);
 }
 
+/**
+ * The same results whatever the number of threads and whether the neighbour list was reused: a run of small moves
+ * and a jump, in one Context, against a new Context at each position.
+ */
+void testNeighborListReuseAndThreads(MSLDNonbondedForce::NonbondedMethod method, const string& threads) {
+    TestSystem ts;
+    buildSystem(ts, method, true, 3.2, true);
+    map<string, string> properties;
+    if (platformName == "CPU")
+        properties["Threads"] = threads;
+    VerletIntegrator integrator(0.001);
+    Context context(ts.system, integrator, Platform::getPlatformByName(platformName), properties);
+    setLambdas(context, 0.35, 0.65, 0.8);
+    OpenMM_SFMT::SFMT sfmt;
+    init_gen_rand(2, sfmt);
+    vector<Vec3> positions = ts.positions;
+    for (int step = 0; step < 30; step++) {
+        double size = (step == 20 ? 0.2 : 0.004);
+        for (int i = 0; i < (int) positions.size(); i++)
+            positions[i] += Vec3(genrand_real2(sfmt)-0.5, genrand_real2(sfmt)-0.5, genrand_real2(sfmt)-0.5)*size;
+        context.setPositions(positions);
+        State reused = context.getState(State::Energy | State::Forces | State::ParameterDerivatives);
+        if (step%10 != 0 && step != 21)
+            continue;
+        VerletIntegrator integrator2(0.001);
+        Context fresh(ts.system, integrator2, Platform::getPlatformByName("Reference"));
+        fresh.setPositions(positions);
+        setLambdas(fresh, 0.35, 0.65, 0.8);
+        State reference = fresh.getState(State::Energy | State::Forces | State::ParameterDerivatives);
+        ASSERT_EQUAL_TOL(reference.getPotentialEnergy(), reused.getPotentialEnergy(), 1e-11);
+        for (int i = 0; i < (int) positions.size(); i++)
+            ASSERT_EQUAL_VEC(reference.getForces()[i], reused.getForces()[i], 1e-10);
+        map<string, double> d0 = reference.getEnergyParameterDerivatives(), d1 = reused.getEnergyParameterDerivatives();
+        for (int b = 1; b <= 3; b++)
+            ASSERT_EQUAL_TOL(d0[MSLDNonbondedForce::getLambdaName(b)], d1[MSLDNonbondedForce::getLambdaName(b)], 1e-10);
+    }
+}
+
+void testBoxChangeRebuildsTheList() {
+    TestSystem ts;
+    buildSystem(ts, MSLDNonbondedForce::CutoffPeriodic, false, 3.2, false);
+    VerletIntegrator integrator(0.001);
+    Context context(ts.system, integrator, Platform::getPlatformByName(platformName));
+    context.setPositions(ts.positions);
+    setLambdas(context, 0.35, 0.65, 0.8);
+    getEnergy(context);
+    double side = 2.1;       // close to twice the cutoff: more pairs fall within reach through the boundary
+    context.setPeriodicBoxVectors(Vec3(side, 0, 0), Vec3(0, side, 0), Vec3(0, 0, side));
+    double e = getEnergy(context);
+    VerletIntegrator integrator2(0.001);
+    Context fresh(ts.system, integrator2, Platform::getPlatformByName(platformName));
+    fresh.setPeriodicBoxVectors(Vec3(side, 0, 0), Vec3(0, side, 0), Vec3(0, 0, side));
+    fresh.setPositions(ts.positions);
+    setLambdas(fresh, 0.35, 0.65, 0.8);
+    ASSERT_EQUAL_TOL(getEnergy(fresh), e, 1e-12);
+}
+
 void runAll() {
     testHandCalculation();
     testIllegalException();
@@ -475,6 +532,13 @@ void runAll() {
     testNeighborListMatchesBruteForce(MSLDNonbondedForce::CutoffPeriodic, true);
     testNeighborListMatchesBruteForce(MSLDNonbondedForce::PME, false);
     testNeighborListMatchesBruteForce(MSLDNonbondedForce::PME, true);
+    testBoxChangeRebuildsTheList();
+    for (const char* threads : {"1", "2", "4", "7"}) {
+        testNeighborListReuseAndThreads(MSLDNonbondedForce::CutoffNonPeriodic, threads);
+        testNeighborListReuseAndThreads(MSLDNonbondedForce::CutoffPeriodic, threads);
+        testNeighborListReuseAndThreads(MSLDNonbondedForce::PME, threads);
+        testNeighborListReuseAndThreads(MSLDNonbondedForce::NoCutoff, threads);
+    }
 }
 
 int main() {

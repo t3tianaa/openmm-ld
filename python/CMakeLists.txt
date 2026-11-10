@@ -33,6 +33,7 @@ execute_process(
     OUTPUT_VARIABLE PYTHON_SITE_PACKAGES OUTPUT_STRIP_TRAILING_WHITESPACE)
 install(TARGETS _msldplugin LIBRARY DESTINATION ${PYTHON_SITE_PACKAGES})
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/msldplugin.py DESTINATION ${PYTHON_SITE_PACKAGES})
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/openmm_ld DESTINATION ${PYTHON_SITE_PACKAGES} PATTERN "__pycache__" EXCLUDE)
 
 # pytest suite (needs numpy and pytest in the Python environment). The comparison with the
 # OpenMM-MSLD Python engine (tests/test_python_engine.py) runs only if MSLD_ENGINE_PATH is set.
@@ -40,4 +41,4 @@ set(MSLD_ENGINE_PATH "" CACHE PATH "OpenMM-MSLD checkout (the directory containi
 add_test(NAME PythonTests
     COMMAND ${Python3_EXECUTABLE} -m pytest -q -rs ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 set_tests_properties(PythonTests PROPERTIES ENVIRONMENT
-    "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR};MSLD_REFERENCE_PLUGIN=$<TARGET_FILE:OpenMMMSLDReference>;MSLD_ENGINE_PATH=${MSLD_ENGINE_PATH}")
+    "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}:${CMAKE_SOURCE_DIR};MSLD_REFERENCE_PLUGIN=$<TARGET_FILE:OpenMMMSLDReference>;MSLD_ENGINE_PATH=${MSLD_ENGINE_PATH}")

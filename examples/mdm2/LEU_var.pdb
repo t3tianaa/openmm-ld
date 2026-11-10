@@ -1,0 +1,24 @@
+HEADER    INTERNAL L-LEU RESIDUE
+TITLE     LEU RESIDUE EXTRACTED FROM PEPTIDE-LIKE ENVIRONMENT
+REMARK    NO OXT OR TERMINAL NH2/NH3 HYDROGENS ARE PRESENT.
+REMARK    BACKBONE N AND C HAVE OPEN VALENCES FOR PEPTIDE BONDS.
+ATOM      1  N   LEU A   4      -0.852   1.222   0.097  1.00  0.00           N
+ATOM      2  H   LEU A   4      -1.025   1.532   1.048  1.00  0.00           H
+ATOM      3  CA  LEU A   4      -0.375  -0.152  -0.014  1.00  0.00           C
+ATOM      4  HA  LEU A   4      -0.413  -0.476  -1.059  1.00  0.00           H
+ATOM      5  C   LEU A   4      -1.340  -1.043   0.799  1.00  0.00           C
+ATOM      6  O   LEU A   4      -2.000  -0.606   1.741  1.00  0.00           O
+ATOM      7  CB  LEU A   4       1.045  -0.303   0.550  1.00  0.00           C
+ATOM      8  HB2 LEU A   4       1.337  -1.361   0.515  1.00  0.00           H
+ATOM      9  HB3 LEU A   4       1.036  -0.030   1.614  1.00  0.00           H
+ATOM     10  CG  LEU A   4       2.115   0.543  -0.168  1.00  0.00           C
+ATOM     11  HG  LEU A   4       1.839   1.603  -0.102  1.00  0.00           H
+ATOM     12  CD1 LEU A   4       3.465   0.374   0.536  1.00  0.00           C
+ATOM     13 HD11 LEU A   4       3.395   0.670   1.588  1.00  0.00           H
+ATOM     14 HD12 LEU A   4       4.230   0.999   0.065  1.00  0.00           H
+ATOM     15 HD13 LEU A   4       3.806  -0.666   0.497  1.00  0.00           H
+ATOM     16  CD2 LEU A   4       2.255   0.176  -1.646  1.00  0.00           C
+ATOM     17 HD21 LEU A   4       2.463  -0.892  -1.772  1.00  0.00           H
+ATOM     18 HD22 LEU A   4       1.344   0.415  -2.204  1.00  0.00           H
+ATOM     19 HD23 LEU A   4       3.073   0.737  -2.110  1.00  0.00           H
+END

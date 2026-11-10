@@ -1,0 +1,17 @@
+# The Python layer. The C++ plugin and the msldplugin module are built with CMake (see README.md).
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openmm-ld"
+version = "0.1.0"
+description = "Multisite lambda dynamics on OpenMM"
+requires-python = ">=3.11"
+dependencies = []       # openmm, numpy, scipy, parmed, rdkit and msldplugin come from conda and the CMake build
+
+[project.scripts]
+openmm-ld = "openmm_ld.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["openmm_ld*"]

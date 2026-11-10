@@ -29,6 +29,11 @@ namespace MSLDPlugin {
  * PME the reciprocal part is OpenMM's own ReferencePME on the charges lambda_b(i) q_i, with the self
  * term and the excluded-pair erf terms subtracted, so at lambda = 1 it matches
  * OpenMM::NonbondedForce exactly.
+ *
+ * The direct-space pairs run on the platform's thread pool (the Threads property on the CPU platform), split
+ * in a fixed way, each thread with its own accumulator. The neighbour list is built with some padding beyond the
+ * cutoff and reused until an atom has moved half the padding or the box has changed; MSLD_NEIGHBOR_PADDING overrides
+ * the padding, and 0 rebuilds at every evaluation. MSLD_KERNEL_TIMING makes it print how long each part took.
  */
 class ReferenceCalcMSLDNonbondedForceKernel : public CalcMSLDNonbondedForceKernel {
 public:
@@ -40,6 +45,12 @@ public:
     void copyParametersToContext(OpenMM::ContextImpl& context, const MSLDNonbondedForce& force);
     void getPMEParameters(double& alpha, int& nx, int& ny, int& nz) const;
 private:
+    class SectionTimer;
+    struct ThreadAccumulator {
+        double energy;
+        std::vector<OpenMM::Vec3> force;
+        std::vector<double> dEdLam;
+    };
     struct Exception14 {
         int i, j;
         double chargeProd, sigma, epsilon;
@@ -48,6 +59,7 @@ private:
     void pairSigmaEpsilon(int i, int j, double& sigma, double& epsilon) const;
     OpenMM::Vec3 delta(const OpenMM::Vec3& xi, const OpenMM::Vec3& xj, const OpenMM::Vec3* box, bool periodic) const;
     void coulombKernel(double r, double& g, double& dg) const;
+    void updateNeighborList(const std::vector<OpenMM::Vec3>& pos, const OpenMM::Vec3* box);
 
     int numParticles, numBlocks;
     MSLDNonbondedForce::NonbondedMethod method;
@@ -61,7 +73,16 @@ private:
     std::set<std::pair<int, int> > exclusions;            // all exception pairs (i < j)
     std::vector<std::pair<int, int> > pmeExclusions;      // exceptions + same-site cross-block pairs
     std::vector<std::set<int> > directExclusions;         // pmeExclusions, per particle both ways
-    bool bruteForcePairs;
+    bool bruteForcePairs, timing;
+    std::vector<std::pair<unsigned int, unsigned int> > neighbors;
+    std::vector<OpenMM::Vec3> neighborPositions;
+    OpenMM::Vec3 neighborBox[3];
+    bool neighborsValid;
+    int neighborBuilds;
+    double neighborPadding;
+    std::vector<ThreadAccumulator> accumulators;
+    std::vector<double> sectionTimes;
+    int evaluations, lastNumThreads;
     std::vector<Exception14> exceptions14;
     OpenMM::ReferencePME* pme;
 };
