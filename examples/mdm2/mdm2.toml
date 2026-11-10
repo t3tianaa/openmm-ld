@@ -1,0 +1,53 @@
+# MDM2 with a four-variant site on the peptide. Short settings: enough to see it work, not enough for science.
+
+[prepare]
+forcefield = ["amber14-all.xml"]
+output = "prepared"
+seed = 0
+renormalize = true
+solvate = true
+
+[[prepare.environment]]
+file = "mdm2_protein.pdb"
+add_hydrogens = true
+
+[[prepare.environment]]
+file = "mdm2_peptide.pdb"
+add_hydrogens = true
+chain = "B"             # both PDBs are chain A; the peptide is a separate binding partner
+
+[[prepare.site]]
+part = 1                # counted in the peptide, the second environment file; residues from 0
+residue = 3
+mapper = "backbone"
+variants = { ILE = "ILE_var.pdb", LEU = "LEU_var.pdb", SER = "SER_var.pdb", VAL = "VAL_var.pdb" }
+
+[system]
+scale_bond = false      # BLaDE practice: only torsions and nonbonded are scaled
+scale_angle = false
+
+[dynamics]
+temperature = 300.0
+timestep = 0.001
+atom_friction = 1.0
+platform = "CPU"
+threads = 4
+seed = 0
+
+[minimize]
+max_iterations = 200
+
+[alf]
+output = "alf"
+iterations = 2
+steps_per_iter = 100
+sample_every = 10
+max_step = 8.0
+tol = 0.0
+
+[run]
+output = "run"
+start = "alf"
+steps = 1000
+metrics_every = 100
+trajectory_every = 200
