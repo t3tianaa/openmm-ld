@@ -330,7 +330,9 @@ void CommonCalcMSLDNonbondedForceKernel::initialize(const System& system, const 
         }
         int elementSize = (cc.getUseDoublePrecision() ? sizeof(double) : sizeof(float));
         int gridElements = gridSize[0]*gridSize[1]*gridSize[2];
-        useFixedPointChargeSpreading = cc.getSupports64BitGlobalAtomics();
+        // Always fixed point, as OpenMM's own PME: Apple OpenCL has no float atomics
+        // and OpenMM emulates the 64-bit integer atomic.
+        useFixedPointChargeSpreading = true;
         charges.initialize(cc, cc.getPaddedNumAtoms(), elementSize, "msldCharges");
         pmeGrid1.initialize(cc, gridElements, 2*elementSize, "msldPmeGrid1");
         pmeGrid2.initialize(cc, gridElements, 2*elementSize, "msldPmeGrid2");
@@ -460,7 +462,7 @@ void CommonCalcMSLDNonbondedForceKernel::initializeKernels() {
     defines["GRID_SIZE_Y"] = cc.intToString(gridSize[1]);
     defines["GRID_SIZE_Z"] = cc.intToString(gridSize[2]);
     defines["EPSILON_FACTOR"] = cc.doubleToString(sqrt(KE));
-    defines["M_PI"] = cc.doubleToString(M_PI);
+    defines["MSLD_PI"] = cc.doubleToString(M_PI);
     defines["NUM_DERIVS"] = cc.intToString(numBlocks > 1 ? derivNames.size() : 0);
     if (useFixedPointChargeSpreading)
         defines["USE_FIXED_POINT_CHARGE_SPREADING"] = "1";

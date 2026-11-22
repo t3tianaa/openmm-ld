@@ -231,7 +231,7 @@ KERNEL void gridSpreadCharge(GLOBAL const real4* RESTRICT posq,
 KERNEL void finishSpreadCharge(GLOBAL const mm_long* RESTRICT grid1, GLOBAL real* RESTRICT grid2) {
     const unsigned int gridSize = GRID_SIZE_X*GRID_SIZE_Y*GRID_SIZE_Z;
     real scale = 1/(real) 0x100000000;
-    for (int index = GLOBAL_ID; index < gridSize; index += GLOBAL_SIZE)
+    for (unsigned int index = GLOBAL_ID; index < gridSize; index += GLOBAL_SIZE)
         grid2[index] = scale*grid1[index];
 }
 #endif
@@ -240,8 +240,8 @@ KERNEL void reciprocalConvolution(GLOBAL real2* RESTRICT pmeGrid, GLOBAL const r
         GLOBAL const real* RESTRICT pmeBsplineModuliY, GLOBAL const real* RESTRICT pmeBsplineModuliZ,
         real4 recipBoxVecX, real4 recipBoxVecY, real4 recipBoxVecZ) {
     const unsigned int gridSize = GRID_SIZE_X*GRID_SIZE_Y*(GRID_SIZE_Z/2+1);
-    const real recipScaleFactor = RECIP(M_PI)*recipBoxVecX.x*recipBoxVecY.y*recipBoxVecZ.z;
-    for (int index = GLOBAL_ID; index < gridSize; index += GLOBAL_SIZE) {
+    const real recipScaleFactor = RECIP((real) MSLD_PI)*recipBoxVecX.x*recipBoxVecY.y*recipBoxVecZ.z;
+    for (unsigned int index = GLOBAL_ID; index < gridSize; index += GLOBAL_SIZE) {
         int kx = index/(GRID_SIZE_Y*(GRID_SIZE_Z/2+1));
         int remainder = index-kx*GRID_SIZE_Y*(GRID_SIZE_Z/2+1);
         int ky = remainder/(GRID_SIZE_Z/2+1);
@@ -270,9 +270,9 @@ KERNEL void gridEvaluateEnergy(GLOBAL real2* RESTRICT pmeGrid, GLOBAL mixed* RES
         GLOBAL const real* RESTRICT pmeBsplineModuliX, GLOBAL const real* RESTRICT pmeBsplineModuliY, GLOBAL const real* RESTRICT pmeBsplineModuliZ,
         real4 recipBoxVecX, real4 recipBoxVecY, real4 recipBoxVecZ) {
     const unsigned int gridSize = GRID_SIZE_X*GRID_SIZE_Y*GRID_SIZE_Z;
-    const real recipScaleFactor = RECIP(M_PI)*recipBoxVecX.x*recipBoxVecY.y*recipBoxVecZ.z;
+    const real recipScaleFactor = RECIP((real) MSLD_PI)*recipBoxVecX.x*recipBoxVecY.y*recipBoxVecZ.z;
     mixed energy = 0;
-    for (int index = GLOBAL_ID; index < gridSize; index += GLOBAL_SIZE) {
+    for (unsigned int index = GLOBAL_ID; index < gridSize; index += GLOBAL_SIZE) {
         int kx = index/(GRID_SIZE_Y*(GRID_SIZE_Z));
         int remainder = index-kx*GRID_SIZE_Y*(GRID_SIZE_Z);
         int ky = remainder/(GRID_SIZE_Z);
