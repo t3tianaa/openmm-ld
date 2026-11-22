@@ -11,9 +11,26 @@ cp -n *.pdb "$WD"/ 2>/dev/null || true
 cp "$CFG" "$WD"/
 cd "$WD"
 [ -f prepared/hybrid_system.xml ] || openmm-ld prepare "$CFG" 2>&1 | tee prepare.log
+# Nonbonded route, chosen once per leg and kept in nonbonded.choice:
+#   plugin = the MSLD GPU kernel (fast; needs libOpenMMMSLDCUDA built, see README),
+#   stock  = stock OpenMM forces with a finite-difference dU/dlambda (slower, no build needed).
+# A leg that already started ALF without a choice file stays on stock.  Override with NONBONDED=plugin|stock.
+if [ -n "${NONBONDED:-}" ]; then
+    echo "$NONBONDED" > nonbonded.choice
+elif [ ! -f nonbonded.choice ]; then
+    if [ -d alf ]; then
+        echo stock > nonbonded.choice
+    elif python -c "import msldplugin" 2>/dev/null && openmm-ld check-gpu "$CFG" 2>&1 | tee check-gpu.log | grep -q "kernel AGREES"; then
+        echo plugin > nonbonded.choice
+    else
+        echo stock > nonbonded.choice
+    fi
+fi
+NB=$(cat nonbonded.choice)
+echo "nonbonded route: $NB"
 # stage 1: 30 cycles x (10 + 40 ps)
-openmm-ld alf "$CFG" 2>&1 | tee -a alf.log
+openmm-ld alf "$CFG" --set system.nonbonded=$NB 2>&1 | tee -a alf.log
 # stage 2: up to cycle 50 with ALF's standard 100 ps cycles (25 ps discarded)
-openmm-ld alf "$CFG" --set alf.cycles=${STAGE2_CYCLES:-50} --set alf.steps=25000 --set alf.equil_steps=6250 2>&1 | tee -a alf.log
+openmm-ld alf "$CFG" --set system.nonbonded=$NB --set alf.cycles=${STAGE2_CYCLES:-50} --set alf.steps=25000 --set alf.equil_steps=6250 2>&1 | tee -a alf.log
 # production (2 ns by default; ALF's estimator, bootstrap over 5 chunks)
-openmm-ld run "$CFG" 2>&1 | tee run.log
+openmm-ld run "$CFG" --set system.nonbonded=$NB 2>&1 | tee run.log

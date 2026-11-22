@@ -5,6 +5,8 @@
 #   openmmapi/               public API (MSLDNonbondedForce) -> libOpenMMMSLD
 #   serialization/           XML serialization proxy           -> libOpenMMMSLD
 #   platforms/reference/     Reference/CPU kernels             -> libOpenMMMSLDReference (plugins dir)
+#   platforms/common/        GPU kernel (common compute API), built into
+#   platforms/opencl|cuda/   -> libOpenMMMSLDOpenCL / libOpenMMMSLDCUDA (plugins dir)
 #   python/                  SWIG wrappers (later)
 #----------------------------------------------------
 
@@ -63,6 +65,33 @@ install(FILES ${API_INTERNAL_HEADERS} DESTINATION include/internal)
 # ---- tests ----
 enable_testing()
 add_subdirectory(platforms/reference)
+
+# ---- GPU platforms (common-platform kernel) ----
+find_package(OpenCL QUIET)
+option(MSLD_BUILD_OPENCL_LIB "Build the OpenCL kernels" ${OpenCL_FOUND})
+if(MSLD_BUILD_OPENCL_LIB)
+    find_package(OpenCL REQUIRED)
+    add_subdirectory(platforms/opencl)
+endif()
+# Only cuda.h and the driver library are needed (OpenMM compiles the kernels at run time).
+find_package(CUDAToolkit QUIET)
+set(_cuda_hints $ENV{CUDA_HOME} $ENV{CUDA_PATH} /usr/local/cuda ${CUDAToolkit_ROOT} ${OPENMM_DIR} ${OPENMM_DIR}/targets/x86_64-linux)
+find_path(MSLD_CUDA_INCLUDE_DIR cuda.h HINTS ${CUDAToolkit_INCLUDE_DIRS} PATHS ${_cuda_hints} PATH_SUFFIXES include targets/x86_64-linux/include)
+find_library(MSLD_CUDA_DRIVER_LIBRARY cuda HINTS ${CUDAToolkit_LIBRARY_DIR} PATHS ${_cuda_hints}
+    PATH_SUFFIXES lib64 lib lib64/stubs lib/stubs targets/x86_64-linux/lib/stubs)
+if(MSLD_CUDA_INCLUDE_DIR AND MSLD_CUDA_DRIVER_LIBRARY AND EXISTS "${OPENMM_DIR}/lib/plugins/libOpenMMCUDA.so")
+    set(_have_cuda ON)
+else()
+    set(_have_cuda OFF)
+endif()
+option(MSLD_BUILD_CUDA_LIB "Build the CUDA kernels" ${_have_cuda})
+if(MSLD_BUILD_CUDA_LIB)
+    if(NOT MSLD_CUDA_INCLUDE_DIR OR NOT MSLD_CUDA_DRIVER_LIBRARY)
+        message(FATAL_ERROR "MSLD_BUILD_CUDA_LIB is ON but cuda.h or libcuda was not found; set CUDA_HOME")
+    endif()
+    message(STATUS "MSLD CUDA kernels: cuda.h in ${MSLD_CUDA_INCLUDE_DIR}, driver ${MSLD_CUDA_DRIVER_LIBRARY}")
+    add_subdirectory(platforms/cuda)
+endif()
 add_subdirectory(serialization/tests)
 
 option(MSLD_BUILD_PYTHON_WRAPPERS "Build the SWIG Python wrapper (module msldplugin)" ON)

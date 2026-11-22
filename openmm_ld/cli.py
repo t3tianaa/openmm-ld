@@ -335,7 +335,110 @@ def run_all(config, base, workdir):
     _production(dyn, prepared, config, workdir)
 
 
-COMMANDS = {"prepare": prepare, "alf": alf, "run": run, "all": run_all}
+def check_gpu(config, base, workdir):
+    """Check the MSLD plugin kernel on the configured GPU platform against the Reference kernel, and time
+    the plugin and stock routes.  Run after `prepare`; it changes no files."""
+    import time
+    import numpy as np
+    import openmm as mm
+    from . import forces
+
+    platform = config["dynamics"]["platform"]
+    if platform in ("Reference", "CPU"):
+        raise SystemExit("check-gpu: set [dynamics] platform to CUDA or OpenCL")
+    msld = forces.load_msldplugin()
+    config["system"]["nonbonded"] = "plugin"
+    prepared, model, dyn = _build(config, workdir)
+    state = dyn.context.getState(getPositions=True)
+    positions, box = state.getPositions(), state.getPeriodicBoxVectors()
+    source = None
+    for force in dyn.context.getSystem().getForces():
+        if forces.is_plugin_force(force):
+            source = msld.MSLDNonbondedForce.cast(force)
+            break
+    if source is None:
+        raise SystemExit("check-gpu: no MSLDNonbondedForce in the system")
+    system = mm.System()
+    for i in range(dyn.context.getSystem().getNumParticles()):
+        system.addParticle(dyn.context.getSystem().getParticleMass(i))
+    system.setDefaultPeriodicBoxVectors(*box)
+    owned = mm.XmlSerializer.deserialize(mm.XmlSerializer.serialize(source))
+    nb = msld.MSLDNonbondedForce.cast(owned)
+    if nb.getNonbondedMethod() == msld.MSLDNonbondedForce.PME:
+        # the same legal FFT grid on both platforms
+        legal = lambda n: next(m for m in range(n, 4*n) if all(p in (2, 3, 5, 7) for p in _factors(m)))
+        a = [box[k][k].value_in_unit(mm.unit.nanometer) for k in range(3)]
+        cutoff = nb.getCutoffDistance()
+        tol = nb.getEwaldErrorTolerance()
+        alpha = (-np.log(2*tol))**0.5/cutoff
+        grid = [legal(int(np.ceil(2*alpha*x/(3*tol**0.2)))) for x in a]
+        nb.setPMEParameters(alpha, *grid)
+    system.addForce(owned)
+    names = [msld.MSLDNonbondedForce.getLambdaName(b) for b in range(1, nb.getNumBlocks())]
+    contexts = {}
+    for name, props in (("Reference", {}), (platform, {"Precision": config["dynamics"]["precision"]})):
+        context = mm.Context(system, mm.VerletIntegrator(0.001), mm.Platform.getPlatformByName(name), props)
+        context.setPositions(positions)
+        context.setPeriodicBoxVectors(*box)
+        contexts[name] = context
+    rng = np.random.default_rng(7)
+    worst = 0.0
+    for trial in range(3):
+        lam = rng.dirichlet(np.ones(len(names)))*0.9 + 0.1*rng.uniform(0, 1, len(names))
+        out = {}
+        for name, context in contexts.items():
+            for n, value in zip(names, lam):
+                context.setParameter(n, float(value))
+            st = context.getState(getEnergy=True, getForces=True, getParameterDerivatives=True)
+            d = st.getEnergyParameterDerivatives()
+            out[name] = (st.getPotentialEnergy().value_in_unit(mm.unit.kilojoule_per_mole),
+                         st.getForces(asNumpy=True).value_in_unit(mm.unit.kilojoule_per_mole/mm.unit.nanometer),
+                         np.array([d[n] for n in names]))
+        ref, gpu = out["Reference"], out[platform]
+        rel_d = np.abs(gpu[2]-ref[2]).max()/max(1.0, np.abs(ref[2]).max())
+        rel_f = np.abs(gpu[1]-ref[1]).max()/max(1.0, np.sqrt((ref[1]**2).mean()))
+        worst = max(worst, rel_d, rel_f)
+        print(f"[check-gpu] lambda set {trial}: dE {gpu[0]-ref[0]:+.4f} kJ/mol (E {ref[0]:.1f}), "
+              f"max force error {np.abs(gpu[1]-ref[1]).max():.4f} kJ/mol/nm, "
+              f"max dU/dlambda error {np.abs(gpu[2]-ref[2]).max():.4f} kJ/mol", flush=True)
+    ok = worst < 1e-3
+    print(f"[check-gpu] kernel {'AGREES' if ok else 'DISAGREES'} with Reference (worst relative error {worst:.1e})", flush=True)
+    del contexts
+    steps = 500
+    minimized = None
+    for route in ("plugin", "stock"):
+        config["system"]["nonbonded"] = route
+        prepared, model, dyn = _build(config, workdir)
+        if minimized is None:
+            _minimize(dyn, config)
+            minimized = dyn.context.getState(getPositions=True).getPositions()
+        else:
+            dyn.context.setPositions(minimized)
+        dyn.context.setVelocitiesToTemperature(config["dynamics"]["temperature"])
+        dyn.step(20)
+        t = time.time()
+        dyn.step(steps)
+        dyn.context.getState(getEnergy=True)
+        per = (time.time()-t)/steps
+        ns_day = 86400/per*config["dynamics"]["timestep"]*1e-3
+        print(f"[check-gpu] {route:6s} route: {per*1e3:.2f} ms/step, {ns_day:.1f} ns/day", flush=True)
+    print("[check-gpu] use [system] nonbonded = \"plugin\"" if ok else
+          "[check-gpu] keep [system] nonbonded = \"stock\" and send me this output", flush=True)
+
+
+def _factors(n):
+    out, p = [], 2
+    while p*p <= n:
+        while n % p == 0:
+            out.append(p)
+            n //= p
+        p += 1
+    if n > 1:
+        out.append(n)
+    return out
+
+
+COMMANDS = {"prepare": prepare, "alf": alf, "run": run, "all": run_all, "check-gpu": check_gpu}
 
 
 def main(argv=None):
