@@ -325,10 +325,12 @@ class _LambdaRecorder:
         self.every = int(every)
         self.start = start_step
         self.rows = []
+        self.t_theta = []
 
     def report(self, dyn, step):
         if step > self.start:
             self.rows.append(dyn.get_lambdas()[1:])
+            self.t_theta.append(dyn.theta_temperature())
 
     def close(self):
         pass
@@ -374,7 +376,7 @@ def flatten(dyn, workdir, *, cycles=50, steps=25000, equil_steps=None, sample_ev
         p_end = (lam > 0.99).mean(axis=0)
         log(f"[ALF] cycle {i}: {time.time() - t:.0f} s, scaling {scaling:.3f}, mean lambda "
             f"{np.round(lam.mean(axis=0), 3).tolist()}, frac(l>0.99) {np.round(p_end, 3).tolist()}, "
-            f"b {np.round(biases.b, 2).tolist()}, T_theta {dyn.theta_temperature():.0f} K")
+            f"b {np.round(biases.b, 2).tolist()}, T_theta {np.mean(rec.t_theta):.0f} K (cycle mean)")
         if checkpoint is not None:
             checkpoint(dyn, i)
     apply_biases(model, biases, dyn.context)

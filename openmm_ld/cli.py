@@ -247,9 +247,15 @@ def _production(dyn, prepared, config, workdir):
         _published_estimate(dyn, prepared, config, out, recorder)
     elapsed = time.time() - t
     print(f"production: {cfg['steps']} steps ({elapsed:.0f} s, {elapsed / cfg['steps']:.3f} s/step); "
-          f"T_theta {dyn.theta_temperature():.0f} K, T_atoms {dyn.atom_temperature():.0f} K", flush=True)
+          f"T_theta {_mean_t_theta(dyn, recorder if reporters else None):.0f} K, T_atoms {dyn.atom_temperature():.0f} K", flush=True)
     if cfg["steps"] >= cfg["metrics_every"]:
         print("mean lambda:", {k: round(v, 3) for k, v in populations(metrics).items()}, flush=True)
+
+
+def _mean_t_theta(dyn, recorder):
+    """Mean theta temperature over the production samples (one snapshot when there are none)."""
+    samples = getattr(recorder, "t_theta", None)
+    return sum(samples)/len(samples) if samples else dyn.theta_temperature()
 
 
 def _published_estimate(dyn, prepared, config, out, recorder):
