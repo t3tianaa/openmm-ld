@@ -501,11 +501,15 @@ def replace_nonbonded_with_plugin(system: mm.System, model) -> tuple:
 
 
 def exception_pairs(system: mm.System) -> set:
-    """All (i, j), i < j, with an exception on the plugin force."""
-    msldplugin = load_msldplugin()
+    """All (i, j), i < j, with an exception on the plugin force (or the stock NonbondedForce)."""
     pairs = set()
     for f in system.getForces():
-        if is_plugin_force(f):
+        if isinstance(f, mm.NonbondedForce):
+            for k in range(f.getNumExceptions()):
+                i, j, *_ = f.getExceptionParameters(k)
+                pairs.add((min(i, j), max(i, j)))
+        elif is_plugin_force(f):
+            msldplugin = load_msldplugin()
             p = msldplugin.MSLDNonbondedForce.cast(f)
             for k in range(p.getNumExceptions()):
                 i, j, *_ = p.getExceptionParameters(k)

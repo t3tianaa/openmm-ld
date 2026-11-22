@@ -1,0 +1,58 @@
+# MDM2 + p53-like peptide, site Ala4 of the peptide -> ILE/LEU/SER/VAL. Free leg (peptide alone in water), for one CUDA GPU.
+# Amber ff14SB/TIP3P, side chain from CB in the blocks (BLaDE convention), H-bond constraints + HMR, 4 fs.
+[prepare]
+forcefield = ["amber14-all.xml"]
+output = "prepared"
+seed = 0
+renormalize = true
+solvate = true
+padding = 1.0
+constraints = "HBonds"
+hydrogen_mass = 3.0
+cutoff = 1.0
+
+[[prepare.environment]]
+file = "mdm2_peptide.pdb"
+add_hydrogens = true
+chain = "B"
+
+[[prepare.site]]
+part = 0
+residue = 3
+mapper = "sidechain"
+variants = { ILE = "ILE_var.pdb", LEU = "LEU_var.pdb", SER = "SER_var.pdb", VAL = "VAL_var.pdb" }
+
+[system]
+scale_bond = false
+scale_angle = false
+nonbonded = "stock"        # stock OpenMM forces on the GPU; PME dU/dlambda by exact central difference
+
+[dynamics]
+temperature = 300.0
+timestep = 0.004
+atom_friction = 1.0
+platform = "CUDA"
+precision = "mixed"
+seed = 0
+
+[minimize]
+max_iterations = 2000
+
+[alf]
+method = "published"
+output = "alf"
+cycles = 30                # stage 1 (run_gpu.sh raises cycles/steps for stage 2)
+steps = 10000              # 40 ps sampled per cycle at 4 fs
+equil_steps = 2500         # 10 ps discarded after each bias change (ALF: first quarter)
+sample_every = 10
+equilibrate_steps = 25000  # 100 ps with zero biases before the first cycle
+
+[run]
+output = "run"
+start = "alf"
+steps = 500000             # 2 ns production
+equil_steps = 25000
+lambda_every = 10
+chunks = 5
+metrics_every = 250
+trajectory_every = 25000

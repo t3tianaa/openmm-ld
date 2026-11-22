@@ -38,8 +38,14 @@ class MSLDIntegrator(mm.CustomIntegrator):
     """
 
     def __init__(self, temperature, atom_friction, timestep, blocks, fnex=5.5, constraint_tolerance=1e-6,
-                 watch_parameters=()):
+                 watch_parameters=(), fd_group=None, fd_step=0.25):
         super().__init__(_value(timestep, unit.picoseconds))
+        # fd_group: force group whose energy depends on the lambdas without reporting dU/dlambda (the stock
+        # NonbondedForce with lambda charge offsets). Its energy is an exact quadratic in each lambda, so a
+        # central difference of that group's energy is exact for any step; a large step keeps the single-
+        # precision round-off small. Costs 2 group energies per block per step.
+        self._fd_group = fd_group
+        self._fd_step = float(fd_step)
         self._blocks = list(blocks)
         self._fnex = float(fnex)
         self.setConstraintTolerance(constraint_tolerance)
@@ -49,6 +55,9 @@ class MSLDIntegrator(mm.CustomIntegrator):
         self.addGlobalVariable("project_lambdas", 1.0)
         self.addGlobalVariable("stale", 0.0)
         self.addGlobalVariable("moved", 0.0)
+        if fd_group is not None:
+            for name in ("fd_save", "fd_plus", "fd_minus"):
+                self.addGlobalVariable(name, 0.0)
         self.addPerDofVariable("x_free", 0.0)
         self.addPerDofVariable("x_last", 0.0)
         self._watched = list(watch_parameters)
@@ -85,6 +94,15 @@ class MSLDIntegrator(mm.CustomIntegrator):
         for site, js in self._sites.items():
             for b in js:
                 self.addComputeGlobal(f"dUdlambda{b}", f"deriv(energy, lambda{b})")
+                if self._fd_group is not None:
+                    h, g = self._fd_step, self._fd_group
+                    self.addComputeGlobal("fd_save", f"lambda{b}")
+                    self.addComputeGlobal(f"lambda{b}", f"fd_save+{h!r}")
+                    self.addComputeGlobal("fd_plus", f"energy{g}")
+                    self.addComputeGlobal(f"lambda{b}", f"fd_save-{h!r}")
+                    self.addComputeGlobal("fd_minus", f"energy{g}")
+                    self.addComputeGlobal(f"lambda{b}", "fd_save")
+                    self.addComputeGlobal(f"dUdlambda{b}", f"dUdlambda{b}+(fd_plus-fd_minus)/{2 * h!r}")
             self.addComputeGlobal(f"wmean{site}", "+".join(f"lambda{j}*dUdlambda{j}" for j in js))
 
     def _half_kick(self):

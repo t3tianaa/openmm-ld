@@ -22,9 +22,11 @@ DEFAULTS = {
                 "ion_conc": 0.0, "water_ff": None, "cutoff": 1.0, "switch_distance": None, "constraints": None,
                 "hydrogen_mass": None},
     "system": {"scale_bond": True, "scale_angle": True, "scale_torsion": True, "softcore_alpha": 0.5,
-               "softcore_sigma_q": 0.3, "fnex": 5.5},
+               "softcore_sigma_q": 0.3, "fnex": 5.5,
+               "nonbonded": "plugin"},
     "dynamics": {"temperature": 300.0, "timestep": 0.001, "atom_friction": 1.0, "theta_mass": 0.05,
-                 "theta_friction": 1.0, "platform": "CPU", "threads": 4, "seed": 0},
+                 "theta_friction": 1.0, "platform": "CPU", "threads": 4, "seed": 0,
+                 "precision": "mixed", "device_index": None},
     "minimize": {"max_iterations": 0},
     "alf": {"output": "alf", "method": "published", "iterations": 20, "steps_per_iter": 20000,
             "sample_every": 100, "rate": 1.0, "couple": True, "max_step": None, "tol": 0.05,
@@ -117,6 +119,9 @@ def _build(config, workdir, biases=None):
     model.scale_bond, model.scale_angle = sysc["scale_bond"], sysc["scale_angle"]
     model.scale_torsion = sysc["scale_torsion"]
     model.softcore_alpha, model.softcore_sigma_q = sysc["softcore_alpha"], sysc["softcore_sigma_q"]
+    if sysc["nonbonded"] not in ("plugin", "stock"):
+        raise SystemExit(f"[system] nonbonded must be 'plugin' or 'stock' (GPU), got {sysc['nonbonded']!r}")
+    model.nonbonded = sysc["nonbonded"]
     published = config["alf"]["method"] == "published"
     if published:
         from . import alf_published
@@ -134,6 +139,10 @@ def _build(config, workdir, biases=None):
     info = model.scale_system(prepared.system)
     print(f"scaled: {prepared.system.getNumForces()} forces, {info['scaled_14_exceptions']} alchemical 1-4s", flush=True)
     properties = {"Threads": str(dync["threads"])} if dync["platform"] == "CPU" else {}
+    if dync["platform"] in ("CUDA", "OpenCL", "HIP"):
+        properties = {"Precision": dync["precision"]}
+        if dync["device_index"] is not None:
+            properties["DeviceIndex"] = str(dync["device_index"])
     dyn = LambdaDynamics(prepared.system, model, prepared.positions, temperature=dync["temperature"],
                          timestep=dync["timestep"], atom_friction=dync["atom_friction"], platform=dync["platform"],
                          properties=properties, box=prepared.box, seed=dync["seed"])

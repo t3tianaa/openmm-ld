@@ -1,0 +1,16 @@
+HEADER    INTERNAL L-SER RESIDUE
+TITLE     SER RESIDUE EXTRACTED FROM PEPTIDE-LIKE ENVIRONMENT
+REMARK    NO OXT OR TERMINAL NH2/NH3 HYDROGENS ARE PRESENT.
+REMARK    BACKBONE N AND C HAVE OPEN VALENCES FOR PEPTIDE BONDS.
+ATOM      1  N   SER A   4       1.347  -0.240  -0.041  1.00  0.00           N
+ATOM      2  H   SER A   4       1.382  -1.209   0.268  1.00  0.00           H
+ATOM      3  CA  SER A   4       0.016   0.356  -0.122  1.00  0.00           C
+ATOM      4  HA  SER A   4      -0.047   1.150   0.633  1.00  0.00           H
+ATOM      5  C   SER A   4      -1.012  -0.726   0.260  1.00  0.00           C
+ATOM      6  O   SER A   4      -0.670  -1.857   0.607  1.00  0.00           O
+ATOM      7  CB  SER A   4      -0.291   0.911  -1.519  1.00  0.00           C
+ATOM      8  HB2 SER A   4      -0.614   0.115  -2.199  1.00  0.00           H
+ATOM      9  HB3 SER A   4       0.576   1.399  -1.974  1.00  0.00           H
+ATOM     10  OG  SER A   4      -1.346   1.878  -1.446  1.00  0.00           O
+ATOM     11  HG  SER A   4      -0.922   2.724  -1.204  1.00  0.00           H
+END

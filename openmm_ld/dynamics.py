@@ -42,9 +42,15 @@ class LambdaDynamics:
         self.rng = np.random.default_rng(seed)
         blocks = [Block(site=bl.site, theta_mass=bl.theta_mass, theta_friction=bl.theta_friction,
                         fixed=bl.fixed, theta0=bl.theta0) for bl in model.blocks[1:]]
+        fd_group = None
+        for f in system.getForces():
+            if isinstance(f, mm.NonbondedForce) and any(
+                    f.getGlobalParameterName(k).startswith("lambda") for k in range(f.getNumGlobalParameters())):
+                fd_group = f.getForceGroup()      # stock nonbonded path: lambda charges, no dU/dlambda
+        self.fd_group = fd_group
         self.integrator = MSLDIntegrator(temperature, atom_friction, timestep, blocks, fnex=model.fnex,
                                          constraint_tolerance=constraint_tolerance,
-                                         watch_parameters=bias_parameter_names(system))
+                                         watch_parameters=bias_parameter_names(system), fd_group=fd_group)
         if seed is not None:
             self.integrator.setRandomNumberSeed(int(seed) + 1)
         platform = mm.Platform.getPlatformByName(platform) if isinstance(platform, str) else platform
@@ -134,6 +140,18 @@ class LambdaDynamics:
         for b in self.dof:
             name = lambda_name(b)
             d[b] = analytic_deriv[name] if name in analytic_deriv else 0.0
+        if self.fd_group is not None:          # stock nonbonded: exact central difference of its energy
+            h = self.integrator._fd_step
+            for b in self.dof:
+                name = lambda_name(b)
+                base = self.context.getParameter(name)
+                e = []
+                for v in (base + h, base - h):
+                    self.context.setParameter(name, v)
+                    e.append(self.context.getState(getEnergy=True, groups={self.fd_group})
+                             .getPotentialEnergy().value_in_unit(_KJ))
+                self.context.setParameter(name, base)
+                d[b] += (e[0] - e[1]) / (2 * h)
         return d, lam
 
     def dUdtheta(self, analytic_deriv=None, lam=None):

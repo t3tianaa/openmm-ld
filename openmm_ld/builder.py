@@ -94,9 +94,15 @@ def scale_msld_system(system: mm.System, model, check_unhandled: bool = True) ->
     info["scaled_improper_forces"] = (
         [f.getName() for f in forces.add_scaled_impropers(system, model)]
         if getattr(model, "scale_torsion", True) else [])
-    force, scaled = forces.replace_nonbonded_with_plugin(system, model)
-    info["nonbonded_force"] = force.getName()
-    info["scaled_14_exceptions"] = scaled
+    if getattr(model, "nonbonded", "plugin") == "stock":
+        # stock OpenMM forces (runs on CUDA/OpenCL); the integrator finite-differences the NonbondedForce
+        from .stock_nonbonded import apply_stock_nonbonded
+        info.update(apply_stock_nonbonded(system, model))
+        info["nonbonded_force"] = "stock"
+    else:
+        force, scaled = forces.replace_nonbonded_with_plugin(system, model)
+        info["nonbonded_force"] = force.getName()
+        info["scaled_14_exceptions"] = scaled
     bias = forces.add_biases(system, model)
     info["bias_force"] = bias.getName() if bias is not None else None
     restr = forces.add_atom_restraints(system, model)
