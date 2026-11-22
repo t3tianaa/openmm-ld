@@ -58,8 +58,9 @@ class HybridSystemBuilder:
                        periodic box, else NoCutoff).
     nonbonded_cutoff : real-space cutoff (nm), used for the cutoff/PME methods.
     switch_distance  : LJ switching distance (nm), or None for no switching.
-    constraints      : createSystem constraints (e.g. app.HBonds), or None.
+    constraints      : createSystem constraints (e.g. app.HBonds or "HBonds"), or None.
     rigid_water      : keep water rigid (createSystem default).
+    hydrogen_mass    : hydrogen mass repartitioning (amu, e.g. 3.0), or None.
     check_cross_variant : run the same-site cross-variant bonded-term guard first.
     """
     nonbonded_method: object = None
@@ -67,6 +68,7 @@ class HybridSystemBuilder:
     switch_distance: float | None = None
     constraints: object = None
     rigid_water: bool = True
+    hydrogen_mass: float | None = None
     check_cross_variant: bool = True
 
     def build(self, structure, blueprint=None) -> mm.System:
@@ -78,8 +80,15 @@ class HybridSystemBuilder:
         if method is None:
             method = app.PME if structure.box is not None else app.NoCutoff
 
-        kw = dict(nonbondedMethod=method, constraints=self.constraints,
-                  rigidWater=self.rigid_water)
+        constraints = self.constraints
+        if isinstance(constraints, str):
+            names = {"none": None, "hbonds": app.HBonds, "allbonds": app.AllBonds, "hangles": app.HAngles}
+            if constraints.lower() not in names:
+                raise ValueError(f"constraints must be one of {sorted(names)}, got {constraints!r}")
+            constraints = names[constraints.lower()]
+        kw = dict(nonbondedMethod=method, constraints=constraints, rigidWater=self.rigid_water)
+        if self.hydrogen_mass is not None:
+            kw["hydrogenMass"] = self.hydrogen_mass * unit.dalton
         if method != app.NoCutoff:
             kw["nonbondedCutoff"] = self.nonbonded_cutoff * unit.nanometer
             if self.switch_distance is not None:

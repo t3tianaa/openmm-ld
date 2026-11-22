@@ -106,9 +106,13 @@ def _resolve_mapper(mapper, reference_name):
         key = mapper.lower()
         if key == "backbone":
             return AminoAcidBackboneMapper(reference_name=reference_name)
+        if key in ("sidechain", "backbone-core"):
+            # BLaDE convention: CB and everything beyond it are in the blocks
+            from .mapping.backbone import BACKBONE_CORE
+            return AminoAcidBackboneMapper(reference_name=reference_name, core_atoms=BACKBONE_CORE)
         if key == "mcs":
             return MCSMapper(reference_name=reference_name)
-        raise ValueError(f"unknown mapper '{mapper}'; use 'backbone', 'mcs', or a Mapper instance")
+        raise ValueError(f"unknown mapper '{mapper}'; use 'backbone', 'sidechain', 'mcs', or a Mapper instance")
     if mapper is None:
         raise ValueError("each Site needs a mapper: 'backbone', 'mcs', or a Mapper instance")
     return mapper
@@ -116,7 +120,7 @@ def _resolve_mapper(mapper, reference_name):
 
 def build_msld_system(environment, sites, *, forcefield=None, add_hydrogens: bool = False,
                       renormalize: bool = True, solvate: bool = False, solvate_kwargs=None,
-                      fix_clashes: bool = True):
+                      fix_clashes: bool = True, system_kwargs=None):
     """Ingest the environment + every variant, wire each site, and assemble the hybrid system.
 
     environment : path | Part | Structure -- the peptide / protein / environment.
@@ -125,6 +129,8 @@ def build_msld_system(environment, sites, *, forcefield=None, add_hydrogens: boo
                   Parts override (Part.forcefield) or extend it (Part.extra_forcefield), so a
                   non-standard residue carries its OWN ffxml on top of the standard one, and a ligand
                   variant carries a small-molecule force field.
+    system_kwargs : HybridSystemBuilder options (nonbonded_cutoff, switch_distance, constraints,
+                  hydrogen_mass, ...).
     fix_clashes : try other rotamers for grafted blocks that clash with the environment
                   (see HybridSystemAssembler.assemble); bundle.reports["clashes"] lists them.
     Returns a HybridSystemBundle (bundle.to_model() -> MSLDModel; bundle.system -> plain System).
@@ -149,6 +155,8 @@ def build_msld_system(environment, sites, *, forcefield=None, add_hydrogens: boo
             mapper=_resolve_mapper(site.mapper, site.reference_name),
             aligner=site.aligner))
 
-    return HybridSystemAssembler().assemble(
+    from .assemble.system import HybridSystemBuilder
+    builder = HybridSystemBuilder(**(system_kwargs or {}))
+    return HybridSystemAssembler(system_builder=builder).assemble(
         env, specs, renormalize=renormalize, solvate=solvate, solvate_kwargs=solvate_kwargs,
         fix_clashes=fix_clashes)

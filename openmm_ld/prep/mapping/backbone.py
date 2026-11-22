@@ -33,6 +33,10 @@ from .core import CoreMapping, Mapper
 
 # Heavy backbone atoms whose presence in a block marks a BACKBONE mutation.
 BACKBONE_HEAVY = ("N", "CA", "C", "O")
+# BLaDE-style side-chain perturbation: only the backbone is shared; CB and beyond belong to the blocks.
+# (Amber gives CB one LJ type in most residues, so the LJ test alone would share CB and average its
+# residue-specific charge across variants -- up to 0.48 e off the force field.)
+BACKBONE_CORE = ("N", "H", "H1", "H2", "H3", "CA", "HA", "C", "O", "OXT")
 
 
 def _lj_key(atom):
@@ -70,6 +74,7 @@ class AminoAcidBackboneMapper(Mapper):
     include_reference: bool = True
     backbone_atoms: tuple = BACKBONE_HEAVY
     rename_blocks: bool = True
+    core_atoms: tuple | None = None     # if set, only these names may be shared (e.g. BACKBONE_CORE)
 
     def get_mapping(self, reference=None, variants=None) -> CoreMapping:
         if reference is None:
@@ -114,6 +119,8 @@ class AminoAcidBackboneMapper(Mapper):
             seen.add(nm)
             if not _unique_in_all(nm):
                 continue                                    # missing / duplicated somewhere
+            if self.core_atoms is not None and nm not in self.core_atoms:
+                continue                                    # side chain: always in the blocks
             lj = {_lj_key(per_block_by_name[b][nm][0]) for b in blocks_struct}
             if len(lj) == 1:                                # one shared LJ => may be shared env
                 core_names.append(nm)

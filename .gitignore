@@ -62,3 +62,7 @@ build/
 
 # ...but keep the input structures
 !examples/**/*.pdb
+
+# Python
+__pycache__/
+*.egg-info/

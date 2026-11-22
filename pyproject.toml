@@ -15,3 +15,6 @@ openmm-ld = "openmm_ld.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["openmm_ld*"]
+
+[tool.setuptools.package-data]
+"openmm_ld.alf_published" = ["G_imp/*.dat", "src/*.c", "src/*.h", "LICENSE"]
