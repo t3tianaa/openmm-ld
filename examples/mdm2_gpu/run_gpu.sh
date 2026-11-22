@@ -20,10 +20,19 @@ if [ -n "${NONBONDED:-}" ]; then
 elif [ ! -f nonbonded.choice ]; then
     if [ -d alf ]; then
         echo stock > nonbonded.choice
-    elif python -c "import msldplugin" 2>/dev/null && openmm-ld check-gpu "$CFG" 2>&1 | tee check-gpu.log | grep -q "kernel AGREES"; then
-        echo plugin > nonbonded.choice
     else
-        echo stock > nonbonded.choice
+        # Log first, then grep the file: "| grep -q" exits at the first match, which kills tee and
+        # check-gpu with SIGPIPE, and under pipefail the whole test then fails (stock despite AGREES).
+        rm -f check-gpu.log
+        if python -c "import msldplugin" 2>/dev/null; then
+            openmm-ld check-gpu "$CFG" > check-gpu.log 2>&1 || true
+            cat check-gpu.log
+        fi
+        if grep -q "kernel AGREES" check-gpu.log 2>/dev/null; then
+            echo plugin > nonbonded.choice
+        else
+            echo stock > nonbonded.choice
+        fi
     fi
 fi
 NB=$(cat nonbonded.choice)
