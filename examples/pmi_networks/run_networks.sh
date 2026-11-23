@@ -39,11 +39,15 @@ replicas_present() {
     echo "$n"
 }
 
-# Both legs of a network have a first replica -> the binding free energies.
+# Both legs of a network have a first replica -> the binding free energies. Called after each leg and
+# again at the end, so it reports each network once however the legs were ordered or skipped.
+REPORTED=""
 finish_network() {
     local net=$1
     local c="out_${net}_complex/run/dG.json" f="out_${net}_free/run/dG.json"
+    case " $REPORTED " in *" $net "*) return 0 ;; esac
     if [ -f "$c" ] && [ -f "$f" ]; then
+        REPORTED="$REPORTED $net"
         echo "[$net] ddG_bind (first replica of each leg):"
         openmm-ld ddg "$c" "$f" "ddg_${net}.json"
         if [ -f analyze_networks.py ]; then
