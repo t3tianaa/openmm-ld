@@ -1,0 +1,22 @@
+HEADER    INTERNAL L-MET RESIDUE
+TITLE     MET RESIDUE EXTRACTED FROM mdm2_protein.pdb
+REMARK    NO OXT OR TERMINAL NH2/NH3 HYDROGENS ARE PRESENT.
+REMARK    BACKBONE N AND C HAVE OPEN VALENCES FOR PEPTIDE BONDS.
+ATOM      1  N   MET A   4      36.759  -8.390  41.633  1.00  0.00           N
+ATOM      2  H   MET A   4      36.173  -7.637  41.964  1.00  0.00           H
+ATOM      3  CA  MET A   4      36.543  -9.752  42.119  1.00  0.00           C
+ATOM      4  HA  MET A   4      37.418 -10.096  42.674  1.00  0.00           H
+ATOM      5  C   MET A   4      36.333 -10.709  40.966  1.00  0.00           C
+ATOM      6  O   MET A   4      36.807 -11.826  40.973  1.00  0.00           O
+ATOM      7  CB  MET A   4      35.291  -9.871  42.988  1.00  0.00           C
+ATOM      8  HB2 MET A   4      34.974 -10.914  43.029  1.00  0.00           H
+ATOM      9  HB3 MET A   4      34.477  -9.308  42.528  1.00  0.00           H
+ATOM     10  CG  MET A   4      35.459  -9.383  44.436  1.00  0.00           C
+ATOM     11  HG2 MET A   4      34.515  -9.488  44.973  1.00  0.00           H
+ATOM     12  HG3 MET A   4      35.746  -8.330  44.443  1.00  0.00           H
+ATOM     13  SD  MET A   4      36.738 -10.336  45.293  1.00  0.00           S
+ATOM     14  CE  MET A   4      36.195 -12.055  45.237  1.00  0.00           C
+ATOM     15  HE1 MET A   4      35.161 -12.122  45.578  1.00  0.00           H
+ATOM     16  HE2 MET A   4      36.820 -12.637  45.910  1.00  0.00           H
+ATOM     17  HE3 MET A   4      36.291 -12.447  44.224  1.00  0.00           H
+END

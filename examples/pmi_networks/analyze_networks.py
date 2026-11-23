@@ -1,0 +1,168 @@
+"""Compare a finished PMI network with the measured affinities.
+
+    python analyze_networks.py val      # or exp, or both (the default)
+
+Reads out_<net>_{free,complex}/, pools the production replicas and prints, per state, the MSLD
+ddG_bind against the measured one. run_networks.sh calls this after both legs of a network finish.
+
+The replicas are fed to the published ALF estimator as independent runs, which is what it is written for:
+the value is the exponential average over replicas and the error bar is a bootstrap over them. That is a
+real error estimate, unlike a bootstrap over chunks of one trajectory, whose chunks are correlated.
+
+Measured values are same-study SPR Kd from the user's table (MDM2(25-109), 10 mM HEPES/150 mM NaCl pH 7.4):
+  L2021  Li et al., Acta Pharm Sin B 2021, doi:10.1016/j.apsb.2021.06.010   (PMI reference Kd 2.7 nM)
+  L2010  Li et al., J Mol Biol 2010,     doi:10.1016/j.jmb.2010.03.005     (PMI reference Kd 3.2 nM)
+Only PMI-N8A comes from the 2010 study. The two studies agree on PMI-L10A (890 vs 897 nM), which is why
+mixing them is defensible, but a cross-study row is marked and should be trusted less.
+"""
+import json
+import os
+import sys
+
+import numpy as np
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+KCAL = 4.184
+RT = 0.001987204258640832 * 298.15      # kcal/mol at the temperature the Kd values are reported at
+
+# state label as the estimator writes it -> (sequence, Kd nM, Kd SD nM, study, name)
+MEASURED = {
+    "val": {
+        "WT+WT":    ("TSFAEYWALLSP", 0.49, 0.21, "L2010", "PMI-N8A"),
+        "ASN+WT":   ("TSFAEYWNLLSP", 2.7, 0.5, "L2021", "PMI"),
+        "ASN+ALA":  ("TSFAEYWNLASP", 897, 33, "L2021", "PMI-L10A"),
+        "WT+ALA":   ("TSFAEYWALASP", 229, 11, "L2021", "PMI-L10A+N8A"),
+        "LEU+ALA":  ("TSFAEYWLLASP", 344, 8, "L2021", "PMI-L10A+N8L"),
+        "THR+ALA":  ("TSFAEYWTLASP", 962, 29, "L2021", "PMI-L10A+N8T"),
+    },
+    "exp": {
+        "WT+WT+WT":  ("TSFAEYWNLASP", 897, 33, "L2021", "PMI-L10A"),
+        "LEU+WT+WT": ("TSFLEYWNLASP", 98, 5, "L2021", "PMI-L10A+A4L"),
+        "WT+GLN+WT": ("TSFAEYWNQASP", 535, 21, "L2021", "PMI-L10A+L9Q"),
+        "WT+WT+MET": ("TSFAEYWNLAMP", 198, 4, "L2021", "PMI-L10A+S11M"),
+    },
+}
+# The state each network's experimental column is referenced to, and what the MSLD run calls it.
+REFERENCE = {"val": "ASN+WT", "exp": "WT+WT+WT"}
+# The states whose sum should equal the all-mutant corner if the mutations were additive.
+ADDITIVITY = {"exp": (["LEU+WT+WT", "WT+GLN+WT", "WT+WT+MET"], "LEU+GLN+MET")}
+
+
+def leg_estimate(workdir):
+    """Pool a leg's production replicas: (labels, dG kcal/mol, bootstrap error, endpoint counts)."""
+    from openmm_ld import alf_published
+    from openmm_ld.prepared import load_prepared
+
+    prepared = load_prepared(os.path.join(workdir, "prepared"))
+    nsubs = [len(site.block_names) for site in prepared.mapping.sites]
+    with open(os.path.join(workdir, "alf", "biases.json")) as fh:
+        saved = json.load(fh)["alf_biases"]
+    biases = alf_published.Biases(sum(nsubs), *(saved[k] for k in "bcxs"))
+
+    runs = sorted(d for d in os.listdir(workdir)
+                  if d == "run" or (d.startswith("run") and d[3:].isdigit()))
+    lambda_runs = []
+    for d in runs:
+        path = os.path.join(workdir, d, "lambda.dat")
+        if os.path.exists(path):
+            lam = np.loadtxt(path)
+            if lam.ndim == 2 and len(lam):
+                lambda_runs.append(lam)
+    if not lambda_runs:
+        raise SystemExit(f"{workdir}: no run*/lambda.dat yet")
+
+    result = alf_published.endpoint_free_energies(lambda_runs, biases, nsubs, 300.0, cutoff=0.99)
+    names = [n for site in prepared.mapping.sites for n in site.block_names]
+    labels = ["+".join(names[i] for i in combo) for combo in result["combos"]]
+    counts = np.array(result["counts"]).sum(axis=0)
+    return labels, np.array(result["dG_kcal"]), np.array(result["err_kcal"]), counts, len(lambda_runs)
+
+
+def analyze(net):
+    free = os.path.join(HERE, f"out_{net}_free")
+    cplx = os.path.join(HERE, f"out_{net}_complex")
+    for wd in (free, cplx):
+        if not os.path.isdir(wd):
+            print(f"[{net}] {os.path.basename(wd)} is not there yet; skipping")
+            return
+    lab_f, g_f, e_f, n_f, reps_f = leg_estimate(free)
+    lab_c, g_c, e_c, n_c, reps_c = leg_estimate(cplx)
+    if lab_f != lab_c:
+        raise SystemExit(f"[{net}] legs have different states:\n  free    {lab_f}\n  complex {lab_c}")
+
+    ddg = g_c - g_f                                     # ddG_bind, relative to the run's first state
+    err = np.sqrt(np.nan_to_num(e_c, nan=0.0) ** 2 + np.nan_to_num(e_f, nan=0.0) ** 2)
+    err[np.isnan(e_c) | np.isnan(e_f)] = np.nan
+    ref = lab_f.index(REFERENCE[net])
+    ddg = ddg - ddg[ref]                                # ...and now relative to the reference state
+
+    measured = MEASURED[net]
+    kd_ref = measured[REFERENCE[net]][1]
+    print(f"\n=== network {net}: {len(lab_f)} states, {reps_f} free / {reps_c} complex replicas")
+    print(f"ddG_bind in kcal/mol, relative to {measured[REFERENCE[net]][4]} "
+          f"({REFERENCE[net]}); negative = binds MDM2 more tightly\n")
+    print(f"{'state':14s} {'name':16s} {'MSLD':>14s} {'measured':>10s} {'Kd nM':>9s} "
+          f"{'error':>7s} {'endpoint':>9s}")
+    rows = []
+    for i, label in enumerate(lab_f):
+        name = measured.get(label, ("", None, None, "", "(prediction)"))[4]
+        if np.isfinite(ddg[i]):
+            msld = f"{ddg[i]:+7.2f}" + (f" ± {err[i]:4.2f}" if np.isfinite(err[i]) else " ±  n/a")
+        else:
+            msld = "unsampled"           # the state never reached its endpoint in any replica
+        exp_text, kd_text, delta_text = "", "", ""
+        if label in measured:
+            _, kd, sd, study, _ = measured[label]
+            exp = RT * np.log(kd / kd_ref)
+            exp_sd = RT * np.hypot(sd / kd, measured[REFERENCE[net]][2] / kd_ref)
+            exp_text = f"{exp:+7.2f}"
+            kd_text = f"{kd:9.4g}"
+            if label != REFERENCE[net]:
+                rows.append((label, name, ddg[i], err[i], exp, exp_sd, study))
+                delta_text = f"{ddg[i] - exp:+7.2f}"
+            if study != "L2021":
+                name += "*"
+        print(f"{label:14s} {name:16s} {msld:>14s} {exp_text:>10s} {kd_text:>9s} "
+              f"{delta_text:>7s} {int(n_c[i]):5d}/{int(n_f[i]):d}")
+    print("  columns: MSLD = this calculation, measured = RT ln(Kd/Kd_ref), error = MSLD - measured,")
+    print("           endpoint = endpoint samples in the complex/free leg.  * = cross-study row.")
+
+    if rows:
+        d = np.array([r[2] - r[4] for r in rows])
+        finite = np.isfinite(d)
+        if finite.any():
+            print(f"\n  {finite.sum()} measured states besides the reference: "
+                  f"MAE {np.abs(d[finite]).mean():.2f}, RMSE {np.sqrt((d[finite] ** 2).mean()):.2f} kcal/mol, "
+                  f"largest miss {np.abs(d[finite]).max():.2f}")
+            m = np.array([r[2] for r in rows])[finite]
+            x = np.array([r[4] for r in rows])[finite]
+            if finite.sum() > 2:
+                order_ok = np.corrcoef(np.argsort(np.argsort(m)), np.argsort(np.argsort(x)))[0, 1]
+                print(f"  rank correlation with experiment (Spearman): {order_ok:+.2f}")
+                print(f"  measured spread {x.max() - x.min():.2f} kcal/mol: a calculation worth "
+                      f"believing has to be clearly better than that")
+
+    if net in ADDITIVITY:
+        singles, corner = ADDITIVITY[net]
+        if corner in lab_f and all(s in lab_f for s in singles):
+            total = sum(ddg[lab_f.index(s)] for s in singles)
+            got = ddg[lab_f.index(corner)]
+            print(f"\n  additivity: {' + '.join(singles)} = {total:+.2f}, {corner} = {got:+.2f}, "
+                  f"so non-additivity {got - total:+.2f} kcal/mol")
+            print("  experiment shows +0.76 for PMI-M5 and +1.07 for PMI-M4 against their own singles,")
+            print("  so a comparable positive number here is the result to look for.")
+
+    out = os.path.join(HERE, f"report_{net}.json")
+    with open(out, "w") as fh:
+        json.dump({"states": lab_f, "ddG_bind_kcal": ddg.tolist(), "err_kcal": err.tolist(),
+                   "reference": REFERENCE[net], "replicas": {"free": reps_f, "complex": reps_c},
+                   "endpoint_counts": {"free": n_f.tolist(), "complex": n_c.tolist()},
+                   "measured": {k: v[1] for k, v in measured.items()}}, fh, indent=1)
+    print(f"\n  wrote {os.path.relpath(out, HERE)}")
+
+
+if __name__ == "__main__":
+    for name in (sys.argv[1:] or ["val", "exp"]):
+        if name not in MEASURED:
+            raise SystemExit(f"unknown network {name!r}; expected val or exp")
+        analyze(name)

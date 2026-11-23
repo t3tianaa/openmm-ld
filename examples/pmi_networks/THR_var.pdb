@@ -1,0 +1,19 @@
+HEADER    INTERNAL L-THR RESIDUE
+TITLE     THR RESIDUE EXTRACTED FROM mdm2_protein.pdb
+REMARK    NO OXT OR TERMINAL NH2/NH3 HYDROGENS ARE PRESENT.
+REMARK    BACKBONE N AND C HAVE OPEN VALENCES FOR PEPTIDE BONDS.
+ATOM      1  N   THR A   4      44.893 -24.871  34.916  1.00  0.00           N
+ATOM      2  H   THR A   4      44.533 -23.999  35.288  1.00  0.00           H
+ATOM      3  CA  THR A   4      46.223 -24.913  34.349  1.00  0.00           C
+ATOM      4  HA  THR A   4      46.138 -25.258  33.318  1.00  0.00           H
+ATOM      5  C   THR A   4      47.100 -25.979  35.061  1.00  0.00           C
+ATOM      6  O   THR A   4      47.832 -26.750  34.403  1.00  0.00           O
+ATOM      7  CB  THR A   4      46.894 -23.528  34.294  1.00  0.00           C
+ATOM      8  HB  THR A   4      46.940 -23.064  35.282  1.00  0.00           H
+ATOM      9  CG2 THR A   4      48.255 -23.710  33.742  1.00  0.00           C
+ATOM     10 HG21 THR A   4      48.928 -24.132  34.489  1.00  0.00           H
+ATOM     11 HG22 THR A   4      48.245 -24.355  32.861  1.00  0.00           H
+ATOM     12 HG23 THR A   4      48.660 -22.738  33.453  1.00  0.00           H
+ATOM     13  OG1 THR A   4      46.162 -22.691  33.365  1.00  0.00           O
+ATOM     14  HG1 THR A   4      45.337 -22.454  33.802  1.00  0.00           H
+END

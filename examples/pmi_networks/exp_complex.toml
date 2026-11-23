@@ -1,0 +1,82 @@
+# Network E (exploration), COMPLEX leg: MDM2(25-109) + PMI-L10A peptide.
+# Three sites on the peptide, 4 x 2 x 2 = 16 states, 4 of them with measured Kd (see networks.md).
+#   site 1 = position 4   WT ALA -> LEU (A4L, measured), ILE, VAL (predictions)
+#   site 2 = position 9   WT LEU -> GLN (L9Q, measured)
+#   site 3 = position 11  WT SER -> MET (S11M, measured)
+# A4L is the best single gain of the 2021 series and L9Q/S11M are two of PMI-M5's five changes, so the
+# all-mutant corner LEU/GLN/MET is a candidate on the path to M4/M5 that was never synthesized.
+# PMI-M4 and PMI-M5 themselves are out of reach: they need T1L (N-terminus) and P12Q (proline), and both
+# change backbone charges, which prep rejects as a side-chain site. See networks.md.
+# Amber ff14SB/TIP3P, side chain from CB in the blocks (BLaDE convention), H-bond constraints + HMR, 4 fs.
+[prepare]
+forcefield = ["amber14-all.xml"]
+output = "prepared"
+seed = 0
+renormalize = true
+solvate = true
+padding = 1.0
+constraints = "HBonds"
+hydrogen_mass = 3.0
+cutoff = 1.0
+
+[[prepare.environment]]
+file = "mdm2_protein.pdb"
+add_hydrogens = true
+
+[[prepare.environment]]
+file = "pmi_L10A_peptide.pdb"
+add_hydrogens = true
+chain = "B"
+
+[[prepare.site]]
+part = 1
+residue = 3
+mapper = "sidechain"
+variants = { LEU = "LEU_var.pdb", ILE = "ILE_var.pdb", VAL = "VAL_var.pdb" }
+
+[[prepare.site]]
+part = 1
+residue = 8
+mapper = "sidechain"
+variants = { GLN = "GLN_var.pdb" }
+
+[[prepare.site]]
+part = 1
+residue = 10
+mapper = "sidechain"
+variants = { MET = "MET_var.pdb" }
+
+[system]
+scale_bond = false
+scale_angle = false
+nonbonded = "plugin"       # run_networks.sh checks the kernel and overrides this if it disagrees
+
+[dynamics]
+temperature = 300.0
+timestep = 0.004
+atom_friction = 1.0
+platform = "CUDA"
+precision = "mixed"
+seed = 1
+
+[minimize]
+max_iterations = 0
+
+[alf]
+method = "published"
+output = "alf"
+cycles = 40                # stage 1 (run_networks.sh raises cycles/steps for stage 2)
+steps = 10000              # 40 ps sampled per cycle at 4 fs
+equil_steps = 2500
+sample_every = 10
+equilibrate_steps = 25000  # 100 ps with zero biases before the first cycle
+
+[run]
+output = "run"
+start = "alf"
+steps = 2500000            # 10 ns production per replica: 16 states need more than 8
+equil_steps = 25000
+lambda_every = 10
+chunks = 5
+metrics_every = 250
+trajectory_every = 50000

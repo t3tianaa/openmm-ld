@@ -1,0 +1,22 @@
+HEADER    INTERNAL L-GLN RESIDUE
+TITLE     GLN RESIDUE EXTRACTED FROM mdm2_protein.pdb
+REMARK    NO OXT OR TERMINAL NH2/NH3 HYDROGENS ARE PRESENT.
+REMARK    BACKBONE N AND C HAVE OPEN VALENCES FOR PEPTIDE BONDS.
+ATOM      1  N   GLN A   4      48.615  -9.334  35.480  1.00  0.00           N
+ATOM      2  H   GLN A   4      47.734  -9.057  35.076  1.00  0.00           H
+ATOM      3  CA  GLN A   4      49.745  -8.411  35.388  1.00  0.00           C
+ATOM      4  HA  GLN A   4      50.645  -8.842  35.823  1.00  0.00           H
+ATOM      5  C   GLN A   4      49.502  -7.091  36.128  1.00  0.00           C
+ATOM      6  O   GLN A   4      50.071  -6.059  35.766  1.00  0.00           O
+ATOM      7  CB  GLN A   4      50.025  -8.102  33.912  1.00  0.00           C
+ATOM      8  HB2 GLN A   4      50.594  -7.177  33.826  1.00  0.00           H
+ATOM      9  HB3 GLN A   4      49.081  -7.940  33.388  1.00  0.00           H
+ATOM     10  CG  GLN A   4      50.873  -9.101  33.143  1.00  0.00           C
+ATOM     11  HG2 GLN A   4      50.308 -10.005  32.947  1.00  0.00           H
+ATOM     12  HG3 GLN A   4      51.740  -9.373  33.746  1.00  0.00           H
+ATOM     13  CD  GLN A   4      51.334  -8.508  31.820  1.00  0.00           C
+ATOM     14  OE1 GLN A   4      50.617  -7.707  31.209  1.00  0.00           O
+ATOM     15  NE2 GLN A   4      52.539  -8.882  31.376  1.00  0.00           N
+ATOM     16 HE21 GLN A   4      52.820  -8.478  30.500  1.00  0.00           H
+ATOM     17 HE22 GLN A   4      53.084  -9.558  31.876  1.00  0.00           H
+END

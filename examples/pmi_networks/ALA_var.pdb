@@ -1,0 +1,15 @@
+HEADER    INTERNAL L-ALA RESIDUE
+TITLE     ALA RESIDUE EXTRACTED FROM mdm2_protein.pdb
+REMARK    NO OXT OR TERMINAL NH2/NH3 HYDROGENS ARE PRESENT.
+REMARK    BACKBONE N AND C HAVE OPEN VALENCES FOR PEPTIDE BONDS.
+ATOM      1  N   ALA A   4      48.286 -12.777  34.919  1.00  0.00           N
+ATOM      2  H   ALA A   4      48.293 -13.595  35.514  1.00  0.00           H
+ATOM      3  CA  ALA A   4      47.686 -11.541  35.406  1.00  0.00           C
+ATOM      4  HA  ALA A   4      47.067 -11.114  34.614  1.00  0.00           H
+ATOM      5  C   ALA A   4      48.820 -10.616  35.740  1.00  0.00           C
+ATOM      6  O   ALA A   4      49.867 -11.050  36.229  1.00  0.00           O
+ATOM      7  CB  ALA A   4      46.824 -11.794  36.638  1.00  0.00           C
+ATOM      8  HB1 ALA A   4      47.446 -11.906  37.527  1.00  0.00           H
+ATOM      9  HB2 ALA A   4      46.114 -10.984  36.768  1.00  0.00           H
+ATOM     10  HB3 ALA A   4      46.248 -12.710  36.499  1.00  0.00           H
+END

@@ -1,0 +1,19 @@
+HEADER    INTERNAL L-ASN RESIDUE
+TITLE     ASN RESIDUE EXTRACTED FROM mdm2_protein.pdb
+REMARK    NO OXT OR TERMINAL NH2/NH3 HYDROGENS ARE PRESENT.
+REMARK    BACKBONE N AND C HAVE OPEN VALENCES FOR PEPTIDE BONDS.
+ATOM      1  N   ASN A   4      50.368 -29.620  49.010  1.00  0.00           N
+ATOM      2  H   ASN A   4      50.317 -29.387  49.989  1.00  0.00           H
+ATOM      3  CA  ASN A   4      51.658 -29.395  48.292  1.00  0.00           C
+ATOM      4  HA  ASN A   4      52.316 -28.928  49.020  1.00  0.00           H
+ATOM      5  C   ASN A   4      51.586 -28.417  47.069  1.00  0.00           C
+ATOM      6  O   ASN A   4      52.392 -28.520  46.108  1.00  0.00           O
+ATOM      7  CB  ASN A   4      52.226 -30.754  47.842  1.00  0.00           C
+ATOM      8  HB2 ASN A   4      51.956 -31.510  48.579  1.00  0.00           H
+ATOM      9  HB3 ASN A   4      51.791 -31.046  46.885  1.00  0.00           H
+ATOM     10  CG  ASN A   4      53.753 -30.783  47.734  1.00  0.00           C
+ATOM     11  OD1 ASN A   4      54.298 -31.460  46.845  1.00  0.00           O
+ATOM     12  ND2 ASN A   4      54.456 -30.084  48.651  1.00  0.00           N
+ATOM     13 HD21 ASN A   4      53.995 -29.517  49.339  1.00  0.00           H
+ATOM     14 HD22 ASN A   4      55.456 -30.082  48.551  1.00  0.00           H
+END
