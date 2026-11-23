@@ -53,8 +53,29 @@ REFERENCE = {"val": "ASN+WT", "exp": "ASN+WT+WT"}
 ADDITIVITY = {"exp": (["WT+WT+WT", "ASN+GLN+WT", "ASN+WT+MET"], "WT+GLN+MET")}
 
 
+def combine_replicas(G, kT):
+    """Exponential average of per-replica free energies, per state, on the absolute scale.
+
+    The published estimator ends by subtracting its first combination, which makes every state NaN as
+    soon as that one combination is unsampled in a leg -- one missing state destroys the other eleven.
+    Nothing here subtracts anything: states keep their own value, an unsampled one stays infinite, and
+    the caller picks the reference it wants.
+    """
+    out = np.full(G.shape[1], np.inf)
+    good = np.isfinite(G).any(axis=0)
+    if good.any():
+        g = G[:, good]
+        gmin = np.nanmin(np.where(np.isfinite(g), g, np.inf), axis=0)
+        with np.errstate(over="ignore", invalid="ignore"):
+            out[good] = gmin - kT * np.log(np.mean(np.exp(-(g - gmin) / kT), axis=0))
+    return out
+
+
 def leg_estimate(workdir):
-    """Pool a leg's production replicas: (labels, dG kcal/mol, bootstrap error, endpoint counts)."""
+    """A leg's production replicas: (labels, dG kcal/mol, bootstrap error, endpoint counts, n replicas).
+
+    dG is on the leg's own absolute scale; analyze() references it. An unsampled state is +inf.
+    """
     from openmm_ld import alf_published
     from openmm_ld.prepared import load_prepared
 
@@ -76,11 +97,38 @@ def leg_estimate(workdir):
     if not lambda_runs:
         raise SystemExit(f"{workdir}: no run*/lambda.dat yet")
 
-    result = alf_published.endpoint_free_energies(lambda_runs, biases, nsubs, 300.0, cutoff=0.99)
+    # G_i = b_i - kT ln P_i per replica, on the absolute scale, as the published estimator computes it
+    # before its final subtraction.
+    kT = alf_published.KB_KCAL * 300.0
+    nblocks = sum(nsubs)
+    starts = np.cumsum([0] + list(nsubs[:-1]))
+    combos = [()]
+    for s in range(len(nsubs)):
+        combos = [c + (starts[s] + k,) for c in combos for k in range(nsubs[s])]
+    G = np.zeros((len(lambda_runs), len(combos)))
+    counts = np.zeros((len(lambda_runs), len(combos)), dtype=int)
+    for j, combo in enumerate(combos):
+        L = np.zeros(nblocks)
+        L[list(combo)] = 1
+        e_end = float(biases.energy(L)[0])
+        for r, lam in enumerate(lambda_runs):
+            P = int(np.sum(np.all(lam[:, list(combo)] > 0.99, axis=1)))
+            counts[r, j] = P
+            G[r, j] = -e_end - kT * np.log(P) if P > 0 else np.inf
+
+    value = combine_replicas(G, kT)
+    if len(lambda_runs) > 1:                 # bootstrap over the replicas, on the absolute scale
+        rng = np.random.default_rng(2401)
+        nf = len(lambda_runs)
+        boot = np.array([combine_replicas(G[rng.integers(0, nf, nf)], kT) for _ in range(1000)])
+        with np.errstate(invalid="ignore"):
+            error = np.std(np.where(np.isfinite(boot), boot, np.nan), axis=0)
+    else:
+        error = np.full(len(combos), np.nan)
+
     names = [n for site in prepared.mapping.sites for n in site.block_names]
-    labels = ["+".join(names[i] for i in combo) for combo in result["combos"]]
-    counts = np.array(result["counts"]).sum(axis=0)
-    return labels, np.array(result["dG_kcal"]), np.array(result["err_kcal"]), counts, len(lambda_runs)
+    labels = ["+".join(names[i] for i in combo) for combo in combos]
+    return labels, value, error, counts.sum(axis=0), len(lambda_runs)
 
 
 def analyze(net):
@@ -95,11 +143,19 @@ def analyze(net):
     if lab_f != lab_c:
         raise SystemExit(f"[{net}] legs have different states:\n  free    {lab_f}\n  complex {lab_c}")
 
-    ddg = g_c - g_f                                     # ddG_bind, relative to the run's first state
+    with np.errstate(invalid="ignore"):
+        ddg = g_c - g_f                                 # each leg on its own absolute scale
     err = np.sqrt(np.nan_to_num(e_c, nan=0.0) ** 2 + np.nan_to_num(e_f, nan=0.0) ** 2)
     err[np.isnan(e_c) | np.isnan(e_f)] = np.nan
     ref = lab_f.index(REFERENCE[net])
-    ddg = ddg - ddg[ref]                                # ...and now relative to the reference state
+    if not np.isfinite(ddg[ref]):
+        raise SystemExit(
+            f"[{net}] the reference state {REFERENCE[net]} was not sampled in both legs "
+            f"(endpoint counts: complex {int(n_c[ref])}, free {int(n_f[ref])}), so nothing can be "
+            f"referenced to it. Run more production, or point REFERENCE at a state that was sampled.")
+    ddg = ddg - ddg[ref]                                # now relative to the reference state
+
+    unsampled = [lab_f[i] for i in range(len(lab_f)) if not np.isfinite(ddg[i])]
 
     measured = MEASURED[net]
     kd_ref = measured[REFERENCE[net]][1]
@@ -131,6 +187,12 @@ def analyze(net):
               f"{delta_text:>7s} {int(n_c[i]):5d}/{int(n_f[i]):d}")
     print("  columns: MSLD = this calculation, measured = RT ln(Kd/Kd_ref), error = MSLD - measured,")
     print("           endpoint = endpoint samples in the complex/free leg.  * = cross-study row.")
+    if unsampled:
+        print(f"\n  {len(unsampled)} state(s) never reached an endpoint in one of the legs: "
+              f"{', '.join(unsampled)}.")
+        print("  These have no estimate. A zero count is not evidence of weak binding: it says the")
+        print("  biases did not open that state, which is a statement about sampling, not affinity.")
+        print("  More production, or more ALF cycles, is what fixes it.")
 
     if rows:
         d = np.array([r[2] - r[4] for r in rows])
