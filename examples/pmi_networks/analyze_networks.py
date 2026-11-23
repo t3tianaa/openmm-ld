@@ -223,8 +223,21 @@ def analyze(net):
             m = np.array([r[2] for r in rows])[finite]
             x = np.array([r[4] for r in rows])[finite]
             if finite.sum() > 2:
+                # Spearman over the measured states EXCLUDING the reference. The reference is 0 on both
+                # axes by construction, so including it adds a point that agrees perfectly by definition
+                # and inflates rho -- on this set it is the difference between 0.90 and 0.94. The exact
+                # permutation p-value is printed because n is small enough that a table is misleading:
+                # with n = 5 even rho = 0.90 is only p = 0.04.
+                from itertools import permutations
+                from math import factorial
+                n = int(finite.sum())
                 order_ok = np.corrcoef(np.argsort(np.argsort(m)), np.argsort(np.argsort(x)))[0, 1]
-                print(f"  rank correlation with experiment (Spearman): {order_ok:+.2f}")
+                b = np.arange(n)
+                p_exact = (sum(1 for q in permutations(b)
+                               if np.corrcoef(b, q)[0, 1] >= order_ok - 1e-9) / factorial(n)
+                           if n <= 8 else float("nan"))
+                print(f"  rank correlation with experiment (Spearman, reference excluded): "
+                      f"{order_ok:+.2f}  (n = {n}, exact one-sided p = {p_exact:.3f})")
                 print(f"  measured spread {x.max() - x.min():.2f} kcal/mol: a calculation worth "
                       f"believing has to be clearly better than that")
 
