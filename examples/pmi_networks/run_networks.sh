@@ -6,6 +6,11 @@
 #     REPLICAS=3 ./run_networks.sh             # three replicas instead of one
 #     NONBONDED=plugin ./run_networks.sh       # skip check-gpu and force a route
 #     STAGE2_CYCLES=70 ./run_networks.sh exp_free   # more ALF for a network that has not flattened
+#     PROD_STEPS=1250000 REPLICAS=3 ./run_networks.sh exp_free exp_complex   # add 5 ns replicas 2 and 3
+#
+# PROD_STEPS overrides [run] steps for the replicas this invocation runs, so later replicas can be
+# longer than earlier ones. analyze_networks.py divides each replica's endpoint count by that replica's
+# own sample count, so replicas of different lengths combine correctly.
 #
 # Each leg is prepare -> route check -> ALF stage 1 -> ALF stage 2 -> production replicas, and every
 # stage is skipped if its marker is already in out_<leg>/, so re-running the script resumes.
@@ -125,9 +130,10 @@ for LEG in "${LEGS[@]}"; do
             echo "[$LEG] replica $r already done"
             continue
         fi
-        echo "[$LEG] production replica $r of $REPLICAS -> $WD/$OUT"
+        echo "[$LEG] production replica $r of $REPLICAS -> $WD/$OUT${PROD_STEPS:+ (}${PROD_STEPS:+$PROD_STEPS steps)}"
         openmm-ld run "$CFG" --workdir "$WD" --set system.nonbonded="$NB" \
-            --set run.output="$OUT" --set dynamics.seed="$r" 2>&1 | tee -a "$WD/run.log"
+            --set run.output="$OUT" --set dynamics.seed="$r" \
+            ${PROD_STEPS:+--set run.steps=$PROD_STEPS} 2>&1 | tee -a "$WD/run.log"
     done
 
     case "$LEG" in

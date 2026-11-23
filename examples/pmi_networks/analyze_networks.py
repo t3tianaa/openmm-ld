@@ -97,8 +97,12 @@ def leg_estimate(workdir):
     if not lambda_runs:
         raise SystemExit(f"{workdir}: no run*/lambda.dat yet")
 
-    # G_i = b_i - kT ln P_i per replica, on the absolute scale, as the published estimator computes it
-    # before its final subtraction.
+    # G_i = b_i - kT ln (P_i / N) per replica, on the absolute scale. The published estimator uses the raw
+    # endpoint count, which is only valid when every run is the same length: a run of twice the length
+    # lowers every G in it by kT ln 2, and the exponential average over replicas then weights the longer
+    # run as though it were a lower free energy. Dividing by that run's own sample count removes it, which
+    # makes replicas of different production lengths comparable. Within one replica the correction is the
+    # same for every state, so it cancels in any ddG and nothing computed before this change moves.
     kT = alf_published.KB_KCAL * 300.0
     nblocks = sum(nsubs)
     starts = np.cumsum([0] + list(nsubs[:-1]))
@@ -114,7 +118,7 @@ def leg_estimate(workdir):
         for r, lam in enumerate(lambda_runs):
             P = int(np.sum(np.all(lam[:, list(combo)] > 0.99, axis=1)))
             counts[r, j] = P
-            G[r, j] = -e_end - kT * np.log(P) if P > 0 else np.inf
+            G[r, j] = -e_end - kT * np.log(P / len(lam)) if P > 0 else np.inf
 
     value = combine_replicas(G, kT)
     if len(lambda_runs) > 1:                 # bootstrap over the replicas, on the absolute scale
