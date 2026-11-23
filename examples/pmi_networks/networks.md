@@ -104,9 +104,11 @@ cd examples/pmi_networks
 Each leg is prepare -> check-gpu -> ALF stage 1 -> ALF stage 2 -> production replicas, writing to
 `out_<leg>/`. Every stage leaves a marker, so re-running resumes rather than repeating. Named legs
 (`./run_networks.sh val_free val_complex`) run only those. `REPLICAS=1` and `STAGE2_CYCLES=90` are the
-other knobs; `NONBONDED=plugin` skips the kernel check.
+other knobs; `NONBONDED=plugin` skips the kernel check. Run outputs land in `out_<leg>/`, which
+`.gitignore` excludes along with the `ddg_*.json` and `report_*` files, so nothing from a run can be
+committed.
 
-Production is **three replicas** from the same flattened state, differing only in the random seed. That is
+Production is **three 2 ns replicas** from the same flattened state, differing only in the random seed. That is
 the fix for the error bars in the first MDM2 run: a bootstrap over chunks of one trajectory treats
 correlated chunks as independent and gave ±0.24 kcal/mol where the chunk-to-chunk spread was 1.9. The
 replicas are fed to the published ALF estimator as the independent runs it expects, and a state missing
@@ -117,14 +119,15 @@ atoms against 5,700, so 3.5 ms/step is a guess, not a measurement:
 
 | leg | steps | estimate |
 |---|---|---|
-| `val_free` | 5.3 M | 1.5 h |
-| `val_complex` | 5.3 M | 5 h |
-| `exp_free` | 9.0 M | 2.5 h |
-| `exp_complex` | 9.0 M | 9 h |
+| `val_free` | 2.7 M | 0.7 h |
+| `val_complex` | 2.7 M | 2.6 h |
+| `exp_free` | 2.7 M | 0.7 h |
+| `exp_complex` | 2.7 M | 2.6 h |
 
-About 18 h for all four. The validation network runs first, so its answer arrives after about 6.5 h.
-`REPLICAS=2` cuts roughly 4 h at the cost of a worse error bar; dropping `run.steps` cuts sampling, which
-is the one thing the first MDM2 run was short of.
+About 6.6 h for all four, and the validation network runs first, so its ddG lands after roughly 3.3 h.
+Each leg is ALF stage 1 (40 cycles x 12.5k steps), stage 2 (20 more at 31.25k) and three 2 ns replicas.
+`REPLICAS=2` takes about 1.5 h off the total and costs you a third of the error-bar statistics;
+`./run_networks.sh val_free val_complex` runs the validation network alone in 3.3 h.
 
 ## Reading the result
 
@@ -149,8 +152,9 @@ What to check before believing any of it:
 
 | | |
 |---|---|
-| `make_inputs.py` | builds `ALA/ASN/GLN/MET/THR_var.pdb` from complete residues of `mdm2_protein.pdb`, and `pmi_L10A_peptide.pdb` from `mdm2_peptide.pdb` by A8N + L10A with PDBFixer |
+| `make_inputs.py` | builds `ALA/ASN/GLN/MET/THR_var.pdb` from complete residues of `../mdm2_gpu/mdm2_protein.pdb`, and `pmi_L10A_peptide.pdb` from `../mdm2_gpu/mdm2_peptide.pdb` by A8N + L10A with PDBFixer |
 | `*_var.pdb` | side-chain donors; `ILE/LEU/VAL_var.pdb` are copies from `examples/mdm2_gpu` |
+| MDM2 and PMI-N8A structures | not copied here: the configs read `../mdm2_gpu/mdm2_protein.pdb` and `../mdm2_gpu/mdm2_peptide.pdb` |
 | `run_networks.sh` | all four legs, resumable |
 | `analyze_networks.py` | replicas pooled, compared with the measured Kd table |
 

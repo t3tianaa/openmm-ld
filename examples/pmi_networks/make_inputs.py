@@ -10,7 +10,7 @@ Writes, next to this script:
                                           Taken from complete residues of mdm2_protein.pdb, so the naming
                                           and geometry match what ff14SB expects.
   pmi_L10A_peptide.pdb                    the exploration network's background peptide, TSFAEYWNLASP
-                                          (PMI-L10A), made from mdm2_peptide.pdb (TSFAEYWALLSP, PMI-N8A)
+                                          (PMI-L10A), made from ../mdm2_gpu/mdm2_peptide.pdb (TSFAEYWALLSP, PMI-N8A)
                                           by A8N and L10A with PDBFixer.
 
 Re-running it overwrites the four files. Nothing else reads this script; the configs read its output.
@@ -21,6 +21,8 @@ from pdbfixer import PDBFixer
 from openmm.app import PDBFile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# The two input structures live in examples/mdm2_gpu; this directory does not copy them.
+MDM2 = os.path.join(HERE, os.pardir, "mdm2_gpu")
 # A complete residue of each type in mdm2_protein.pdb (chain A, author numbering of that file).
 DONORS = {"ALA": 19, "ASN": 55, "GLN": 20, "MET": 26, "THR": 39}
 # Atom order of the existing *_var.pdb files: backbone first, then the side chain from CB.
@@ -57,13 +59,13 @@ def write_var(resname, atoms, path):
 
 
 def main():
-    protein = os.path.join(HERE, "mdm2_protein.pdb")
+    protein = os.path.join(MDM2, "mdm2_protein.pdb")
     for resname, resnum in DONORS.items():
         atoms = read_residue(protein, resname, resnum)
         write_var(resname, atoms, os.path.join(HERE, f"{resname}_var.pdb"))
 
     # PMI-N8A (TSFAEYWALLSP) -> PMI-L10A (TSFAEYWNLASP): put Asn back at 8, take Leu10 down to Ala.
-    fixer = PDBFixer(filename=os.path.join(HERE, "mdm2_peptide.pdb"))
+    fixer = PDBFixer(filename=os.path.join(MDM2, "mdm2_peptide.pdb"))
     fixer.applyMutations(["ALA-8-ASN", "LEU-10-ALA"], "A")
     fixer.findMissingResidues()
     fixer.missingResidues = {}          # a 12-mer with no gaps: never add residues

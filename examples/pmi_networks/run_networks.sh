@@ -81,7 +81,7 @@ for LEG in "${LEGS[@]}"; do
     # ALF stage 2: ALF's standard 100 ps cycles (25 ps discarded), continuing from stage 1's biases.
     if [ ! -f "$WD/.stage2" ]; then
         openmm-ld alf "$CFG" --workdir "$WD" --set system.nonbonded="$NB" \
-            --set alf.cycles="${STAGE2_CYCLES:-70}" --set alf.steps=25000 --set alf.equil_steps=6250 \
+            --set alf.cycles="${STAGE2_CYCLES:-60}" --set alf.steps=25000 --set alf.equil_steps=6250 \
             2>&1 | tee -a "$WD/alf.log"
         touch "$WD/.stage2"
     fi

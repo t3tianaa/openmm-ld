@@ -20,7 +20,7 @@ hydrogen_mass = 3.0
 cutoff = 1.0
 
 [[prepare.environment]]
-file = "mdm2_protein.pdb"
+file = "../mdm2_gpu/mdm2_protein.pdb"
 add_hydrogens = true
 
 [[prepare.environment]]
@@ -74,9 +74,9 @@ equilibrate_steps = 25000  # 100 ps with zero biases before the first cycle
 [run]
 output = "run"
 start = "alf"
-steps = 2500000            # 10 ns production per replica: 16 states need more than 8
+steps = 500000             # 2 ns production per replica
 equil_steps = 25000
 lambda_every = 10
 chunks = 5
 metrics_every = 250
-trajectory_every = 50000
+trajectory_every = 25000

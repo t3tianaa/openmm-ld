@@ -63,6 +63,13 @@ build/
 # ...but keep the input structures
 !examples/**/*.pdb
 
+# MSLD run outputs: prepared systems, trajectories, ALF analysis, dG and ddG reports.
+# These directories are excluded outright, so the rule above cannot pull their PDBs back in.
+examples/**/out_*/
+examples/**/ddg_*.json
+examples/**/report_*.json
+examples/**/report_*.txt
+
 # Python
 __pycache__/
 *.egg-info/
