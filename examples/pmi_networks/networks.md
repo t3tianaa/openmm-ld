@@ -127,7 +127,35 @@ atoms against 5,700, so 3.5 ms/step is a guess, not a measurement:
 About 6.6 h for all four, and the validation network runs first, so its ddG lands after roughly 3.3 h.
 Each leg is ALF stage 1 (40 cycles x 12.5k steps), stage 2 (20 more at 31.25k) and three 2 ns replicas.
 `REPLICAS=2` takes about 1.5 h off the total and costs you a third of the error-bar statistics;
-`./run_networks.sh val_free val_complex` runs the validation network alone in 3.3 h.
+`./run_networks.sh val_free val_complex` runs the validation network alone in 3.3 h. `STAGE2_CYCLES=40` skips
+ALF's long cycles altogether and brings all four legs to about 4.5 h, at the risk of biases that have not
+settled.
+
+### What 2 ns per replica actually buys
+
+Sampling, not wall clock, is what decides whether these numbers mean anything, so it is worth being
+explicit. At `lambda_every = 10` each replica records 50,000 lambda samples, so three replicas give
+150,000 per leg. The single-site MDM2 run spent 12% of its samples at some endpoint; taking that as the
+rate here:
+
+| | states | endpoint samples per state, on average |
+|---|---|---|
+| the earlier single-site run, 2 ns, 1 replica | 5 | about 1,200 |
+| network V, 2 ns x 3 | 8 | about 2,200 |
+| network E, 2 ns x 3 | 16 | about 1,100 |
+
+So **network V at three replicas is better sampled per state than the run you have already seen**, and
+network E is about level with it. That average hides a lot: in the single-site run the per-state counts
+ran from 172 to 3,511, a factor of 20, because ALF never flattens the populations perfectly. Network E's
+thinnest states will therefore land in the low hundreds, which is exactly where LEU was when its error
+bar came back NaN. Expect at least one of the sixteen to be unusable, and read the endpoint counts in the
+report before trusting any ranking.
+
+This is the reason the default is three replicas rather than one. At `REPLICAS=1` the table above divides
+by three: network E would average about 370 endpoint samples per state, most of the sixteen would be
+noise, and a bootstrap over the chunks of a single trajectory would report tight error bars anyway —
+the failure the first MDM2 run already showed. If the budget has to come out of somewhere, take it from
+`STAGE2_CYCLES` or run the validation network alone, not from the replicas.
 
 ## Reading the result
 

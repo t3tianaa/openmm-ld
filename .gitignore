@@ -69,6 +69,15 @@ examples/**/out_*/
 examples/**/ddg_*.json
 examples/**/report_*.json
 examples/**/report_*.txt
+# ...and the same again for a run started without --workdir, which writes beside the config.
+examples/**/prepared/
+examples/**/alf/
+examples/**/run/
+examples/**/run[0-9]*/
+examples/**/*.log
+examples/**/nonbonded.choice
+examples/**/.stage*
+examples/**/.done
 
 # Python
 __pycache__/
