@@ -36,16 +36,21 @@ MEASURED = {
         "THR+ALA":  ("TSFAEYWTLASP", 962, 29, "L2021", "PMI-L10A+N8T"),
     },
     "exp": {
-        "WT+WT+WT":  ("TSFAEYWNLASP", 897, 33, "L2021", "PMI-L10A"),
-        "LEU+WT+WT": ("TSFLEYWNLASP", 98, 5, "L2021", "PMI-L10A+A4L"),
-        "WT+GLN+WT": ("TSFAEYWNQASP", 535, 21, "L2021", "PMI-L10A+L9Q"),
-        "WT+WT+MET": ("TSFAEYWNLAMP", 198, 4, "L2021", "PMI-L10A+S11M"),
+        "WT+WT+WT":  ("TSFAEYWALLSP", 0.49, 0.21, "L2010", "PMI-N8A"),
+        "ASN+WT+WT": ("TSFAEYWNLLSP", 2.7, 0.5, "L2021", "PMI"),
     },
 }
+# Network E sits on the L10-wild background, where only those two states were measured. The single
+# increments it is built from (L9Q, L9M, S11M) were measured on the PMI-L10A background instead, so they
+# are not rows here; they are what the additivity check below is compared against.
+PMI_L10A_INCREMENTS = {       # kcal/mol vs PMI-L10A (897 nM), same study, for reference only
+    "N8A": -0.81, "L9Q": -0.31, "L9M": -0.29, "S11M": -0.90, "P12Q": -1.14,
+}
 # The state each network's experimental column is referenced to, and what the MSLD run calls it.
-REFERENCE = {"val": "ASN+WT", "exp": "WT+WT+WT"}
+REFERENCE = {"val": "ASN+WT", "exp": "ASN+WT+WT"}
 # The states whose sum should equal the all-mutant corner if the mutations were additive.
-ADDITIVITY = {"exp": (["LEU+WT+WT", "WT+GLN+WT", "WT+WT+MET"], "LEU+GLN+MET")}
+# N8A + L9Q + S11M against the corner that carries all three: TSFAEYWAQLMP, PMI-M3's 8-11 motif.
+ADDITIVITY = {"exp": (["WT+WT+WT", "ASN+GLN+WT", "ASN+WT+MET"], "WT+GLN+MET")}
 
 
 def leg_estimate(workdir):
@@ -149,8 +154,10 @@ def analyze(net):
             got = ddg[lab_f.index(corner)]
             print(f"\n  additivity: {' + '.join(singles)} = {total:+.2f}, {corner} = {got:+.2f}, "
                   f"so non-additivity {got - total:+.2f} kcal/mol")
-            print("  experiment shows +0.76 for PMI-M5 and +1.07 for PMI-M4 against their own singles,")
-            print("  so a comparable positive number here is the result to look for.")
+            print("  The corner is TSFAEYWAQLMP, PMI-M3's 8-11 motif on the plain PMI backbone.")
+            print("  Nothing measures it, so this is MSLD against itself. Experiment is anti-cooperative")
+            print("  by +0.76 for PMI-M5 and +1.07 for PMI-M4 against their own singles, both on the")
+            print("  L10A background, so a positive number of that order is what to expect.")
 
     out = os.path.join(HERE, f"report_{net}.json")
     with open(out, "w") as fh:

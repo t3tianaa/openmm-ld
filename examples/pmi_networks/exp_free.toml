@@ -1,12 +1,13 @@
-# Network E (exploration), FREE leg: PMI-L10A peptide alone in water.
-# Three sites on the peptide, 4 x 2 x 2 = 16 states, 4 of them with measured Kd (see networks.md).
-#   site 1 = position 4   WT ALA -> LEU (A4L, measured), ILE, VAL (predictions)
-#   site 2 = position 9   WT LEU -> GLN (L9Q, measured)
-#   site 3 = position 11  WT SER -> MET (S11M, measured)
-# A4L is the best single gain of the 2021 series and L9Q/S11M are two of PMI-M5's five changes, so the
-# all-mutant corner LEU/GLN/MET is a candidate on the path to M4/M5 that was never synthesized.
-# PMI-M4 and PMI-M5 themselves are out of reach: they need T1L (N-terminus) and P12Q (proline), and both
-# change backbone charges, which prep rejects as a side-chain site. See networks.md.
+# Network E (exploration), FREE leg: the PMI-N8A peptide alone in water.
+# Three sites, 2 x 3 x 2 = 12 states, substitutions taken from the PMI-M3/M5 series:
+#   site 1 = position 8   WT ALA (the background is PMI-N8A) -> ASN, which restores wild-type PMI
+#   site 2 = position 9   WT LEU -> GLN, MET
+#   site 3 = position 11  WT SER -> MET
+# The corner ALA8 + GLN9 + MET11 is TSFAEYWAQLMP, which carries PMI-M3's 8-11 motif (A Q L M) on the
+# plain PMI backbone. M3 itself is LTFLEYWAQLMQ at 3.7 pM, so that motif is known to be worth having;
+# this network asks how much of it survives without M3's T1L, S2T, A4L and P12Q.
+# Only two states have a measured Kd on this background, so read this network as design, not validation;
+# network V is the validation run. See networks.md.
 # Amber ff14SB/TIP3P, side chain from CB in the blocks (BLaDE convention), H-bond constraints + HMR, 4 fs.
 [prepare]
 forcefield = ["amber14-all.xml"]
@@ -20,21 +21,21 @@ hydrogen_mass = 3.0
 cutoff = 1.0
 
 [[prepare.environment]]
-file = "pmi_L10A_peptide.pdb"
+file = "../mdm2_gpu/mdm2_peptide.pdb"
 add_hydrogens = true
 chain = "B"
 
 [[prepare.site]]
 part = 0
-residue = 3
+residue = 7
 mapper = "sidechain"
-variants = { LEU = "LEU_var.pdb", ILE = "ILE_var.pdb", VAL = "VAL_var.pdb" }
+variants = { ASN = "ASN_var.pdb" }
 
 [[prepare.site]]
 part = 0
 residue = 8
 mapper = "sidechain"
-variants = { GLN = "GLN_var.pdb" }
+variants = { GLN = "GLN_var.pdb", MET = "MET_var.pdb" }
 
 [[prepare.site]]
 part = 0
@@ -61,7 +62,7 @@ max_iterations = 0
 [alf]
 method = "published"
 output = "alf"
-cycles = 40                # stage 1 (run_networks.sh raises cycles/steps for stage 2)
+cycles = 30                # stage 1, as the single-site MDM2 run (run_networks.sh continues to 50)
 steps = 10000              # 40 ps sampled per cycle at 4 fs
 equil_steps = 2500
 sample_every = 10

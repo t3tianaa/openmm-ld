@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 # Run both PMI networks, both legs each, one after another on one GPU:
 #
-#     ./run_networks.sh                      # all four legs, in order
-#     ./run_networks.sh val_free val_complex  # only these legs
-#     REPLICAS=1 ./run_networks.sh            # one production replica instead of three
-#     NONBONDED=plugin ./run_networks.sh      # skip check-gpu and force a route
-#     STAGE2_CYCLES=90 ./run_networks.sh exp_free   # more ALF for a network that has not flattened
+#     ./run_networks.sh                       # all four legs, one production replica each (~2.2 h)
+#     ./run_networks.sh val_free val_complex   # only these legs
+#     REPLICAS=3 ./run_networks.sh             # three replicas instead of one
+#     NONBONDED=plugin ./run_networks.sh       # skip check-gpu and force a route
+#     STAGE2_CYCLES=70 ./run_networks.sh exp_free   # more ALF for a network that has not flattened
 #
 # Each leg is prepare -> route check -> ALF stage 1 -> ALF stage 2 -> production replicas, and every
-# stage is skipped if its marker file is already in out_<leg>/, so re-running the script resumes.
+# stage is skipped if its marker is already in out_<leg>/, so re-running the script resumes.
+#
+# Replicas can be added later for the cost of the extra production alone. Running with REPLICAS=1 and
+# then again with REPLICAS=3 keeps the prepared system and both ALF stages and runs only replicas 2 and
+# 3: about 40 min per free leg and 73 min per complex leg for each one. That is why the skip test below
+# counts the replicas actually present instead of looking for one "this leg is finished" marker.
+#
 # The validation network runs first: its dG is what the measured Kd values test.
 # Order matters for the GPU, not for correctness; the legs are independent.
 set -euo pipefail
@@ -17,9 +23,23 @@ cd "$(dirname "$0")"
 ALL_LEGS=(val_free val_complex exp_free exp_complex)
 LEGS=("${ALL_LEGS[@]}")
 if [ "$#" -gt 0 ]; then LEGS=("$@"); fi
-REPLICAS=${REPLICAS:-3}
+REPLICAS=${REPLICAS:-1}
 
-# Both legs of a network done -> the binding free energies.
+# Output directory of replica r: run, run2, run3, ...
+replica_dir() {
+    if [ "$1" -gt 1 ]; then echo "run$1"; else echo run; fi
+}
+
+# How many of the requested replicas already have a dG.json.
+replicas_present() {
+    local wd=$1 n=0 r
+    for r in $(seq 1 "$REPLICAS"); do
+        if [ -f "$wd/$(replica_dir "$r")/dG.json" ]; then n=$((n + 1)); fi
+    done
+    echo "$n"
+}
+
+# Both legs of a network have a first replica -> the binding free energies.
 finish_network() {
     local net=$1
     local c="out_${net}_complex/run/dG.json" f="out_${net}_free/run/dG.json"
@@ -39,12 +59,17 @@ for LEG in "${LEGS[@]}"; do
         echo "no such leg: $LEG (expected $CFG); legs are ${ALL_LEGS[*]}" >&2
         exit 1
     fi
-    if [ -f "$WD/.done" ]; then
-        echo "[$LEG] already finished ($WD/.done); delete that file to run it again"
+    mkdir -p "$WD"
+    HAVE=$(replicas_present "$WD")
+    if [ "$HAVE" -ge "$REPLICAS" ]; then
+        echo "[$LEG] already has $HAVE of $REPLICAS replicas; raise REPLICAS for more"
+        case "$LEG" in
+            val_*) finish_network val ;;
+            exp_*) finish_network exp ;;
+        esac
         continue
     fi
-    mkdir -p "$WD"
-    echo "=== $LEG"
+    echo "=== $LEG ($HAVE of $REPLICAS replicas done)"
 
     if [ ! -f "$WD/prepared/hybrid_system.xml" ]; then
         openmm-ld prepare "$CFG" --workdir "$WD" 2>&1 | tee "$WD/prepare.log"
@@ -79,19 +104,19 @@ for LEG in "${LEGS[@]}"; do
         touch "$WD/.stage1"
     fi
     # ALF stage 2: ALF's standard 100 ps cycles (25 ps discarded), continuing from stage 1's biases.
+    # alf.cycles is a cumulative target, so this carries on from the config's 30 to STAGE2_CYCLES.
     if [ ! -f "$WD/.stage2" ]; then
         openmm-ld alf "$CFG" --workdir "$WD" --set system.nonbonded="$NB" \
-            --set alf.cycles="${STAGE2_CYCLES:-60}" --set alf.steps=25000 --set alf.equil_steps=6250 \
+            --set alf.cycles="${STAGE2_CYCLES:-50}" --set alf.steps=25000 --set alf.equil_steps=6250 \
             2>&1 | tee -a "$WD/alf.log"
         touch "$WD/.stage2"
     fi
 
     # Production: independent replicas from the same flattened state, differing only in the random seed.
-    # Several short replicas beat one long run here: the error bar comes from their spread, and a state
-    # that is never visited in one replica no longer makes the bootstrap undefined.
+    # One replica is enough for a first number; several give an error bar from their spread, and stop a
+    # state missing from one run from making the bootstrap undefined.
     for r in $(seq 1 "$REPLICAS"); do
-        OUT=run
-        if [ "$r" -gt 1 ]; then OUT="run${r}"; fi
+        OUT=$(replica_dir "$r")
         if [ -f "$WD/$OUT/dG.json" ]; then
             echo "[$LEG] replica $r already done"
             continue
@@ -101,7 +126,6 @@ for LEG in "${LEGS[@]}"; do
             --set run.output="$OUT" --set dynamics.seed="$r" 2>&1 | tee -a "$WD/run.log"
     done
 
-    touch "$WD/.done"
     case "$LEG" in
         val_*) finish_network val ;;
         exp_*) finish_network exp ;;

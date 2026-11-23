@@ -7,12 +7,13 @@ ddG_bind = dG_complex - dG_free. Negative means the state binds MDM2 more tightl
 
 | | network V (validation) | network E (exploration) |
 |---|---|---|
-| background peptide | `mdm2_peptide.pdb`, TSFAEYWALLSP (PMI-N8A, [3LNZ](https://www.rcsb.org/structure/3LNZ)) | `pmi_L10A_peptide.pdb`, TSFAEYWNLASP (PMI-L10A) |
-| sites | position 8, position 10 | positions 4, 9, 11 |
-| blocks per site | 4, 2 | 4, 2, 2 |
-| states | 8 | 16 |
-| with measured Kd | 6 | 4 |
-| reference for ddG | PMI (`ASN+WT`) | PMI-L10A (`WT+WT+WT`) |
+| background peptide | both: `../mdm2_gpu/mdm2_peptide.pdb`, TSFAEYWALLSP (PMI-N8A, [3LNZ](https://www.rcsb.org/structure/3LNZ)) | |
+| sites | position 8, position 10 | positions 8, 9, 11 |
+| blocks per site | 4, 2 | 2, 3, 2 |
+| states | 8 | 12 |
+| with measured Kd | 6 | 2 |
+| what it is for | testing the calculation against affinities spanning 4.5 kcal/mol | designing toward PMI-M3's 8-11 motif |
+| reference for ddG | PMI (`ASN+WT`) | PMI (`ASN+WT+WT`) |
 | configs | `val_free.toml`, `val_complex.toml` | `exp_free.toml`, `exp_complex.toml` |
 
 ## Network V: does MSLD reproduce measured affinities?
@@ -43,56 +44,64 @@ The 2010 and 2021 studies both measured PMI-L10A, at 890 and 897 nM. They agree,
 defensible to use the 2010 value for PMI-N8A alongside 2021 values for everything else. `analyze_networks.py`
 marks that row with `*` anyway.
 
-## Network E: three sites, 16 states, 12 of them never made
+## Network E: three sites, twelve states, the PMI-M3 motif
 
-Everything sits on the PMI-L10A background, because that is the background the 2021 single mutations were
-measured on.
+This one is **design, not validation** — network V carries the validation load. It sits on the same
+PMI-N8A peptide as network V, `../mdm2_gpu/mdm2_peptide.pdb`, and opens three sites with substitutions
+from the PMI-M3/M5 series:
 
-* **position 4** — WT ALA. Blocks LEU (**A4L, measured**, 98 nM: the largest single gain in the series),
-  ILE, VAL.
-* **position 9** — WT LEU. Block GLN (**L9Q, measured**, 535 nM).
-* **position 11** — WT SER. Block MET (**S11M, measured**, 198 nM).
+* **position 8** — WT ALA. Block ASN, which restores wild-type PMI.
+* **position 9** — WT LEU. Blocks GLN and MET.
+* **position 11** — WT SER. Block MET.
 
-| state | peptide | Kd (nM) | ddG vs PMI-L10A |
-|---|---|---|---|
-| `WT+WT+WT` | PMI-L10A | 897 ± 33 | 0 (reference) |
-| `LEU+WT+WT` | PMI-L10A+A4L | 98 ± 5 | −1.31 |
-| `WT+WT+MET` | PMI-L10A+S11M | 198 ± 4 | −0.90 |
-| `WT+GLN+WT` | PMI-L10A+L9Q | 535 ± 21 | −0.31 |
-| the other 12 | — | — | predictions |
+2 x 3 x 2 = 12 states. The point of the network is the corner **`WT+GLN+MET`**, sequence
+**TSFAEYWAQLMP**: Ala8, Gln9, Leu10, Met11 is exactly PMI-M3's 8-11 motif. M3 itself is LTFLEYWAQLMQ at
+**3.7 pM**, the tightest MDM2 peptide in the series, so that motif is known to be worth having. The
+network asks how much of it survives on the plain PMI backbone, without M3's T1L, S2T, A4L and P12Q.
 
-Two questions it asks:
+| state | peptide | sequence | Kd (nM) | study |
+|---|---|---|---|---|
+| `ASN+WT+WT` | PMI | TSFAEYWNLLSP | 2.7 ± 0.5 | L2021, reference |
+| `WT+WT+WT` | PMI-N8A | TSFAEYWALLSP | 0.49 ± 0.21 | L2010 |
+| `WT+GLN+MET` | — | TSFAEYWAQLMP | — | **the target: M3's 8-11 motif** |
+| the other 9 | — | — | — | predictions |
 
-1. **Is the A4L gain about volume or about shape?** ILE is Leu's branched isomer at the same volume, VAL is
-   one CH2 smaller. If the gain is buried surface, VAL < LEU ≈ ILE. If it is shape, ILE and LEU separate.
-2. **Do the favourable mutations add up?** They were measured one at a time. Experiment says they do not:
-   against the sum of its own singles, PMI-M4 is **+1.07** kcal/mol and PMI-M5 **+0.76** kcal/mol short
-   (anti-cooperative). The corner `LEU+GLN+MET` tests whether MSLD reproduces a positive non-additivity of
-   that size, and it is a new candidate — the combination was never synthesized. `analyze_networks.py`
-   prints this comparison.
+**Only two states have a measured Kd on this background, and that is the network's real weakness.** The
+increments it is built from were measured on the PMI-L10A background, not this one: N8A −0.81, L9Q −0.31,
+L9M −0.29, S11M −0.90 kcal/mol against PMI-L10A at 897 nM. Add the three that make up the corner and
+naive additivity predicts roughly −2 kcal/mol from PMI, which is a few hundred pM. Treat that as the
+number to beat, not a prediction: the same arithmetic fails by **+0.76 kcal/mol** for PMI-M5 and
+**+1.07** for PMI-M4 against their own singles, both anti-cooperative. `analyze_networks.py` prints the
+MSLD version of that sum against the corner, so you can see whether the calculation reproduces
+anti-cooperativity of that size.
 
-### Why PMI-M4 and PMI-M5 are not in the network
+What the network can and cannot tell you:
 
-Both were on the list and neither can be reached by a side-chain site:
+* It **can** rank the twelve, say whether the M3 motif is worth having without M3's other four changes,
+  and say whether MSLD thinks the increments add up.
+* It **cannot** be checked against experiment except at its two anchors, and those two differ by only
+  1.0 kcal/mol. A sign error or a 2 kcal/mol systematic would pass unnoticed here, which is why network V
+  runs first.
 
-* **PMI-M4** (LTFLEYWNLASP) needs T1L. Position 1 is the peptide N-terminus, and prep refuses it:
-  `env atom N charge varies by 0.597 e across variants (> 0.5); it is not really a shared atom.` The
-  N-terminal residue's backbone carries the NH3+ charges, the grafted internal residue does not, so N is
-  not a shared atom. `mapper = "backbone"` fails the same way. This is a correct refusal, not a bug.
-* **PMI-M5** (TSFAEYWAQAMQ) needs P12Q. Proline's ring closes through its backbone N, so Pro→X is a
-  backbone mutation by construction, and position 12 is the C-terminus as well.
+### Why PMI-M3, M4 and M5 are not themselves states
 
-Network E covers three of M5's five changes (L9Q, S11M and L10A in the background) and M4's strongest
-single (A4L). M5 itself is two changes away from `LEU+GLN+MET`, M4 is two away.
+M3, M4 and M5 all need changes outside what a side-chain site can do:
 
-To reach M4 or M5 exactly, the peptide would have to be capped — acetyl on the N-terminus, amide on the
-C-terminus — so that positions 1 and 12 become internal residues. That is worth checking against the
-papers anyway: if the measured peptides were capped and this model gives them charged termini, then the
-T1, S2 and P12 comparisons carry a systematic error, and every network here that touches positions 4-11 is
-unaffected. Capping is a change to prep, not to a config.
+* **T1L** (in M2, M3, M4). Position 1 is the peptide N-terminus, whose backbone carries the NH3+ charges
+  that an internal residue does not, so the shared N is not actually shared. Prep refuses it:
+  `env atom N charge varies by 0.597 e across variants (> 0.5); it is not really a shared atom.`
+  `mapper = "backbone"` fails the same way. This is a correct refusal, not a bug.
+* **P12Q** (in M2, M3, M5). Proline's ring closes through its own backbone nitrogen, so Pro to anything
+  is a backbone mutation by construction, and position 12 is the C-terminus as well.
 
-PMI-M2 and PMI-M3 are left out deliberately: 8 and 7 changes from PMI, far outside one network, and M3 at
-3.7 pM makes optimizing this system moot.
+So the closest reachable thing is the motif, not the molecule. To reach M3, M4 or M5 exactly, the peptide
+would have to be capped, acetyl on the N-terminus and amide on the C-terminus, so positions 1 and 12
+become internal residues. That is worth checking against the papers in any case: if the measured peptides
+were capped and this model gives them charged termini, every comparison at positions 1, 2 and 12 carries a
+systematic error. Nothing between positions 4 and 11 is affected, so both networks here are clear of it.
+
+A4L is also left out, even though it is the largest single gain in the 2021 series at 98 nM, because it
+would make this a four-site network. It is the obvious next one.
 
 ## Running it
 
@@ -103,59 +112,62 @@ cd examples/pmi_networks
 
 Each leg is prepare -> check-gpu -> ALF stage 1 -> ALF stage 2 -> production replicas, writing to
 `out_<leg>/`. Every stage leaves a marker, so re-running resumes rather than repeating. Named legs
-(`./run_networks.sh val_free val_complex`) run only those. `REPLICAS=1` and `STAGE2_CYCLES=90` are the
+(`./run_networks.sh val_free val_complex`) run only those. `REPLICAS=3` and `STAGE2_CYCLES=70` are the
 other knobs; `NONBONDED=plugin` skips the kernel check. Run outputs land in `out_<leg>/`, which
 `.gitignore` excludes along with the `ddg_*.json` and `report_*` files, so nothing from a run can be
 committed.
 
 Production is **three 2 ns replicas** from the same flattened state, differing only in the random seed. That is
 the fix for the error bars in the first MDM2 run: a bootstrap over chunks of one trajectory treats
-correlated chunks as independent and gave ±0.24 kcal/mol where the chunk-to-chunk spread was 1.9. The
-replicas are fed to the published ALF estimator as the independent runs it expects, and a state missing
-from one replica no longer makes the error undefined.
+correlated chunks as independent and gave ±0.24 kcal/mol where the chunk-to-chunk spread was 1.9. They are
+fed to the published ALF estimator as the independent runs it expects, and a state missing from one replica
+no longer makes the error undefined. Adding them later costs only the extra production; see below.
 
-Rough cost, scaling from the 0.93 ms/step the free leg reached on the CUDA VM. The complex leg is 26,300
-atoms against 5,700, so 3.5 ms/step is a guess, not a measurement:
+Cost, from the step rates your own VM logs give: **0.92 ms/step** for a free leg (375,000 steps in 348 s
+and 625,000 in 573 s) and **1.67 ms/step** for a complex leg (375,000 in 633 s and 625,000 in 1032 s).
+No estimates in this table. Each leg is 25,000 steps of equilibration, ALF stage 1 (30 x 12,500) and
+stage 2 (20 x 31,250), then 525,000 steps per 2 ns replica:
 
-| leg | steps | estimate |
-|---|---|---|
-| `val_free` | 2.7 M | 0.7 h |
-| `val_complex` | 2.7 M | 2.6 h |
-| `exp_free` | 2.7 M | 0.7 h |
-| `exp_complex` | 2.7 M | 2.6 h |
+| | free leg | complex leg | one network | both networks |
+|---|---|---|---|---|
+| `REPLICAS=1`, the default | 24 min | 43 min | **1.1 h** | **2.2 h** |
+| each further replica | +8 min | +15 min | +23 min | +46 min |
+| `REPLICAS=3` | 40 min | 73 min | 1.9 h | 3.7 h |
 
-About 6.6 h for all four, and the validation network runs first, so its ddG lands after roughly 3.3 h.
-Each leg is ALF stage 1 (40 cycles x 12.5k steps), stage 2 (20 more at 31.25k) and three 2 ns replicas.
-`REPLICAS=2` takes about 1.5 h off the total and costs you a third of the error-bar statistics;
-`./run_networks.sh val_free val_complex` runs the validation network alone in 3.3 h. `STAGE2_CYCLES=40` skips
-ALF's long cycles altogether and brings all four legs to about 4.5 h, at the risk of biases that have not
-settled.
+The default is one replica, which is exactly the single-site run you have already done: 30 ALF cycles, 20
+more, one 2 ns production with `chunks = 5`. So the default plan is that run four times over, about 2.2 h.
 
-### What 2 ns per replica actually buys
+**Replicas can be added later for the price of the extra production alone.** Run with `REPLICAS=1`, look
+at the numbers, and then run the same command with `REPLICAS=3`: the prepared system and both ALF stages
+are kept, and only replicas 2 and 3 are run. Nothing is recomputed and nothing is wasted. ALF is the
+expensive half of a leg, so going from one replica to three costs 46 minutes across all four legs, not
+another full run.
 
-Sampling, not wall clock, is what decides whether these numbers mean anything, so it is worth being
-explicit. At `lambda_every = 10` each replica records 50,000 lambda samples, so three replicas give
-150,000 per leg. The single-site MDM2 run spent 12% of its samples at some endpoint; taking that as the
-rate here:
+`STAGE2_CYCLES=40` halves ALF's long cycles and takes about 40 min off the total, at the risk of biases
+that have not settled.
+
+### What one 2 ns replica buys, and what the third one adds
+
+Sampling, not wall clock, decides whether these numbers mean anything. At `lambda_every = 10` each replica
+records 50,000 lambda samples. The single-site MDM2 run spent 12% of its samples at some endpoint; taking
+that as the rate here:
 
 | | states | endpoint samples per state, on average |
 |---|---|---|
 | the earlier single-site run, 2 ns, 1 replica | 5 | about 1,200 |
-| network V, 2 ns x 3 | 8 | about 2,200 |
-| network E, 2 ns x 3 | 16 | about 1,100 |
+| network V, 1 replica / 3 replicas | 8 | about 750 / 2,200 |
+| network E, 1 replica / 3 replicas | 12 | about 500 / 1,500 |
 
-So **network V at three replicas is better sampled per state than the run you have already seen**, and
-network E is about level with it. That average hides a lot: in the single-site run the per-state counts
-ran from 172 to 3,511, a factor of 20, because ALF never flattens the populations perfectly. Network E's
-thinnest states will therefore land in the low hundreds, which is exactly where LEU was when its error
-bar came back NaN. Expect at least one of the sixteen to be unusable, and read the endpoint counts in the
-report before trusting any ranking.
+So at one replica **both networks are more thinly sampled per state than the run you have already seen**,
+because the same sampling is divided among 8 or 12 states instead of 5. That average also hides a lot: in
+the single-site run the per-state counts ran from 172 to 3,511, a factor of 20, because ALF never flattens
+the populations perfectly. Expect some states in the low hundreds, and at least one that cannot be
+estimated at all.
 
-This is the reason the default is three replicas rather than one. At `REPLICAS=1` the table above divides
-by three: network E would average about 370 endpoint samples per state, most of the sixteen would be
-noise, and a bootstrap over the chunks of a single trajectory would report tight error bars anyway —
-the failure the first MDM2 run already showed. If the budget has to come out of somewhere, take it from
-`STAGE2_CYCLES` or run the validation network alone, not from the replicas.
+With one replica the error bar is also back to a bootstrap over the five chunks of a single trajectory,
+which is what reported +/-0.24 kcal/mol on LEU where the chunk-to-chunk spread was 1.9, and NaN where a
+chunk had no endpoint samples. **Read a one-replica run as a ranking and a sanity check, not as a number
+with an error bar.** The third replica is what turns it into one, and it is 46 minutes away at any time.
 
 ## Reading the result
 
@@ -170,19 +182,19 @@ network are finished.
 What to check before believing any of it:
 
 * **`alf.log`**: `scaling` approaching 1, `frac(l>0.99)` non-zero for *every* block, `b` stopped drifting,
-  T_theta near 300 K. Network E has 8 blocks; if some never light up, raise `STAGE2_CYCLES`.
-* **endpoint counts** in the report: 16 states share the sampling, so each gets a fraction of what 5 states
+  T_theta near 300 K. Network E has 7 blocks; if some never light up, raise `STAGE2_CYCLES`.
+* **endpoint counts** in the report: 12 states share the sampling, so each gets a fraction of what 5 states
   got. A state with a few hundred endpoint samples is noise, as LEU was in the first MDM2 run.
-* **the measured spread**: network E's four anchors span only 1.3 kcal/mol. A calculation that cannot beat
-  1.3 kcal/mol of error says nothing about ranking them.
+* **the measured spread**: network E has only two anchors and they differ by 1.0 kcal/mol, so it cannot
+  catch a systematic error. That is network V's job, and V should be read first.
 
 ## Files
 
 | | |
 |---|---|
-| `make_inputs.py` | builds `ALA/ASN/GLN/MET/THR_var.pdb` from complete residues of `../mdm2_gpu/mdm2_protein.pdb`, and `pmi_L10A_peptide.pdb` from `../mdm2_gpu/mdm2_peptide.pdb` by A8N + L10A with PDBFixer |
-| `*_var.pdb` | side-chain donors; `ILE/LEU/VAL_var.pdb` are copies from `examples/mdm2_gpu` |
-| MDM2 and PMI-N8A structures | not copied here: the configs read `../mdm2_gpu/mdm2_protein.pdb` and `../mdm2_gpu/mdm2_peptide.pdb` |
+| `make_inputs.py` | builds the five new `*_var.pdb` donors from complete residues of `../mdm2_gpu/mdm2_protein.pdb` |
+| `*_var.pdb` | the six side-chain donors; `LEU_var.pdb` is a copy from `examples/mdm2_gpu` |
+| MDM2 and PMI-N8A structures | not copied here: both networks read `../mdm2_gpu/mdm2_protein.pdb` and `../mdm2_gpu/mdm2_peptide.pdb` |
 | `run_networks.sh` | all four legs, resumable |
 | `analyze_networks.py` | replicas pooled, compared with the measured Kd table |
 

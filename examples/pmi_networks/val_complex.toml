@@ -54,7 +54,7 @@ max_iterations = 0
 [alf]
 method = "published"
 output = "alf"
-cycles = 40                # stage 1 (run_networks.sh raises cycles/steps for stage 2)
+cycles = 30                # stage 1, as the single-site MDM2 run (run_networks.sh continues to 50)
 steps = 10000              # 40 ps sampled per cycle at 4 fs
 equil_steps = 2500
 sample_every = 10
