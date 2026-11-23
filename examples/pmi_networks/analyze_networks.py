@@ -121,18 +121,26 @@ def leg_estimate(workdir):
             G[r, j] = -e_end - kT * np.log(P / len(lam)) if P > 0 else np.inf
 
     value = combine_replicas(G, kT)
+    coverage = np.isfinite(G).sum(axis=0)    # replicas in which this state reached its endpoint
+    error = np.full(len(combos), np.nan)
     if len(lambda_runs) > 1:                 # bootstrap over the replicas, on the absolute scale
         rng = np.random.default_rng(2401)
         nf = len(lambda_runs)
         boot = np.array([combine_replicas(G[rng.integers(0, nf, nf)], kT) for _ in range(1000)])
-        with np.errstate(invalid="ignore"):
-            error = np.std(np.where(np.isfinite(boot), boot, np.nan), axis=0)
-    else:
-        error = np.full(len(combos), np.nan)
+        # A resample that draws none of the replicas holding a state is UNDEFINED for that state, not
+        # zero-width. np.std propagates the NaN, which silently throws away the error bar of every
+        # state missing from even one replica -- with 3 replicas a given one is absent from (2/3)^3 =
+        # 30% of resamples, so that is most of them. Take the spread over the defined resamples.
+        # With coverage 1 every defined resample repeats the same single replica, so that spread is
+        # exactly 0, which is not an error bar; those stay NaN and the table reports the coverage.
+        ok = coverage >= 2
+        if ok.any():
+            with np.errstate(invalid="ignore"):
+                error[ok] = np.nanstd(np.where(np.isfinite(boot[:, ok]), boot[:, ok], np.nan), axis=0)
 
     names = [n for site in prepared.mapping.sites for n in site.block_names]
     labels = ["+".join(names[i] for i in combo) for combo in combos]
-    return labels, value, error, counts.sum(axis=0), len(lambda_runs)
+    return labels, value, error, counts.sum(axis=0), len(lambda_runs), coverage
 
 
 def analyze(net):
@@ -142,8 +150,8 @@ def analyze(net):
         if not os.path.isdir(wd):
             print(f"[{net}] {os.path.basename(wd)} is not there yet; skipping")
             return
-    lab_f, g_f, e_f, n_f, reps_f = leg_estimate(free)
-    lab_c, g_c, e_c, n_c, reps_c = leg_estimate(cplx)
+    lab_f, g_f, e_f, n_f, reps_f, cov_f = leg_estimate(free)
+    lab_c, g_c, e_c, n_c, reps_c, cov_c = leg_estimate(cplx)
     if lab_f != lab_c:
         raise SystemExit(f"[{net}] legs have different states:\n  free    {lab_f}\n  complex {lab_c}")
 
@@ -167,7 +175,7 @@ def analyze(net):
     print(f"ddG_bind in kcal/mol, relative to {measured[REFERENCE[net]][4]} "
           f"({REFERENCE[net]}); negative = binds MDM2 more tightly\n")
     print(f"{'state':14s} {'name':16s} {'MSLD':>14s} {'measured':>10s} {'Kd nM':>9s} "
-          f"{'error':>7s} {'endpoint':>9s}")
+          f"{'error':>7s} {'endpoint':>9s} {'reps':>6s}")
     rows = []
     for i, label in enumerate(lab_f):
         name = measured.get(label, ("", None, None, "", "(prediction)"))[4]
@@ -188,9 +196,16 @@ def analyze(net):
             if study != "L2021":
                 name += "*"
         print(f"{label:14s} {name:16s} {msld:>14s} {exp_text:>10s} {kd_text:>9s} "
-              f"{delta_text:>7s} {int(n_c[i]):5d}/{int(n_f[i]):d}")
+              f"{delta_text:>7s} {int(n_c[i]):5d}/{int(n_f[i]):d} "
+              f"{int(cov_c[i])}/{int(cov_f[i])} of {reps_c}")
     print("  columns: MSLD = this calculation, measured = RT ln(Kd/Kd_ref), error = MSLD - measured,")
-    print("           endpoint = endpoint samples in the complex/free leg.  * = cross-study row.")
+    print("           endpoint = endpoint samples in the complex/free leg, reps = replicas in which the")
+    print("           state reached its endpoint.  * = cross-study row.")
+    thin = [lab_f[i] for i in range(len(lab_f)) if np.isfinite(ddg[i]) and not np.isfinite(err[i])]
+    if thin:
+        print(f"\n  no error bar for {', '.join(thin)}: reached in only one replica of a leg, so a")
+        print("  bootstrap over replicas has nothing to vary. The value is still the pooled estimate;")
+        print("  it rests on one run, and another replica is what turns it into a number with a spread.")
     if unsampled:
         print(f"\n  {len(unsampled)} state(s) never reached an endpoint in one of the legs: "
               f"{', '.join(unsampled)}.")
@@ -230,6 +245,7 @@ def analyze(net):
         json.dump({"states": lab_f, "ddG_bind_kcal": ddg.tolist(), "err_kcal": err.tolist(),
                    "reference": REFERENCE[net], "replicas": {"free": reps_f, "complex": reps_c},
                    "endpoint_counts": {"free": n_f.tolist(), "complex": n_c.tolist()},
+                   "replica_coverage": {"free": cov_f.tolist(), "complex": cov_c.tolist()},
                    "measured": {k: v[1] for k, v in measured.items()}}, fh, indent=1)
     print(f"\n  wrote {os.path.relpath(out, HERE)}")
 
